@@ -6,7 +6,7 @@ on:
       - main
       - master
   schedule:
-    - cron: '18 * * * *' # Veranderd naar minuut 18 om de spits op het hele uur te vermijden!
+    - cron: '18 * * * *'
   workflow_dispatch: {}
 
 jobs:
@@ -29,7 +29,7 @@ jobs:
     - name: Hulpprogrammas installeren
       run: pip install garminconnect google-genai
 
-    - name: Script live opbouwen (Robust Gemini Retry + Token Caching)
+    - name: Script live opbouwen (Gemini Model Fallback Upgrade)
       run: |
         cat << 'EOF' > coach.py
         import os
@@ -55,7 +55,7 @@ jobs:
             os.makedirs(token_dir, exist_ok=True)
             
             garmin = Garmin(GARMIN_EMAIL, GARMIN_WACHTWOORD)
-            garmin.login(token_dir) # Gebruikt gecachte tokens om 429-blokkades te voorkomen
+            garmin.login(token_dir)
             
             print("Laatste 7 activiteiten ophalen...")
             alle_activiteiten = garmin.get_activities(0, 7)
@@ -115,7 +115,7 @@ jobs:
                 "Bepaal welk systeem de grootste klap heeft gehad: het Centrale Zenuwstelsel (neurologisch, door hoge hartslagzones) "
                 "of het spierstelsel (mechanische impactschaal). Wat betekent dit voor de komende 48 uur?\n\n"
                 "4. EXACT METABOOL HERSTELPLAN (72 KG SPECIFIEK)\n"
-                "Bereken op basis van de calorieën en zijn gewicht van 72 kg de exacte nutritionele herstelbehoefte. "
+                "Bereken op basis van de calorieën en zijn gewicht of 72 kg de exacte nutritionele herstelbehoefte. "
                 "Geef harde streefgetallen in GRAMMEN koolhydraten en GRAMMEN eiwitten binnen het 'golden window', "
                 "inclusief de exacte vocht- en elektrolytenbehoefte in milliliters.\n\n"
                 "5. STRATEGISCH TRAININGSRECEPT (BLINDE VLEKKEN)\n"
@@ -123,20 +123,24 @@ jobs:
                 f"Hier is de Garmin datahistorie: {json.dumps(geschiedenis)}"
             )
 
-            # --- ROBUUSTE RETRY-LUS VOOR GEMINI 503 ERRORS ---
+            # --- INTELLIGENTE MODEL FALLBACK STRATEGIE ---
+            modellen = ['gemini-2.5-flash', 'gemini-1.5-flash']
             response = None
-            for poging in range(3):
+            
+            for model_naam in modellen:
                 try:
-                    print(f"Analyse opvragen bij Gemini (poging {poging + 1}/3)...")
-                    response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+                    print(f"Analyse opvragen bij {model_naam}...")
+                    response = client.models.generate_content(model=model_naam, contents=prompt)
+                    print(f"Succesvol antwoord ontvangen van {model_naam}!")
                     break
-                except Exception as gemini_error:
-                    print(f"Gemini gaf een melding op poging {poging + 1}: {gemini_error}")
-                    if poging < 2:
-                        print("Tijdelijke drukte bij Google API. We wachten 20 seconden en proberen het opnieuw...")
-                        time.sleep(20)
-                    else:
-                        raise gemini_error
+                except Exception as e:
+                    print(f"Model {model_naam} gaf een foutmelding: {e}")
+                    if model_naam != modellen[-1]:
+                        print("We schakelen direct over naar het reserve-model...")
+                        time.sleep(5)
+            
+            if not response:
+                raise Exception("Zowel het hoofd- als reservemodel van Google zijn momenteel onbereikbaar.")
 
             analyse_tekst = response.text
 
@@ -154,7 +158,7 @@ jobs:
             server.sendmail(GMAIL_ADRES, EMAIL_ONTVANGER, msg.as_string())
             server.quit()
             
-            print("Succes! Mail met gevalideerde quote is verstuurd.")
+            print("Succes! Mail is verstuurd.")
 
         except Exception as e:
             print(f"Fout tijdens run: {e}")
