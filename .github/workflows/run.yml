@@ -21,7 +21,7 @@ jobs:
     - name: Hulpprogrammas installeren
       run: pip install garminconnect google-genai
 
-    - name: Script live opbouwen (Trend Coach + Quote Integration)
+    - name: Script live opbouwen (Validated Quotes Update)
       run: |
         cat << 'EOF' > coach.py
         import os
@@ -59,7 +59,7 @@ jobs:
             
             if not is_manual:
                 act_time = datetime.strptime(start_time_str, "%Y-%m-%d %H:%M:%S")
-                huidige_tijd_be = datetime.utcnow() + timedelta(hours=2) # UTC+2
+                huidige_tijd_be = datetime.utcnow() + timedelta(hours=2) # UTC+2 (Nederlandse tijd)
                 tijdsverschil = huidige_tijd_be - act_time
                 
                 if tijdsverschil > timedelta(minutes=90):
@@ -83,7 +83,7 @@ jobs:
 
             client = genai.Client(api_key=GEMINI_API_KEY)
             
-            # DE PROMPT MET QUOTE INSTRUCTIE
+            # DE PROMPT MET STRIKTE VALIDATIE OP QUOTES
             prompt = (
                 "Je bent een elite sportwetenschapper en fysioloog. Je analyseert de hardloopgeschiedenis van een atleet "
                 "met het volgende profiel: Lengte 1m80, Gewicht 72 kg (slanke, efficiënte loper, BMI 22.2).\n\n"
@@ -91,8 +91,10 @@ jobs:
                 "Focus uitsluitend op diepe, onzichtbare fysiologische inzichten en de cumulatieve trend van de afgelopen 10 dagen.\n\n"
                 "Structureer de e-mail exact met de volgende specifieke onderdelen (gebruik HOOFDLETTERS voor de titels en witregels):\n\n"
                 "OPENINGSQUOTE\n"
-                "Begin de e-mail ALTIJD direct met een toepasselijke, sterke of filosofische sport/hardloopquote (van een bekende atleet, coach of filosoof) "
-                "die perfect aansluit bij de aard en intensiteit van de nieuwste training. Plaats de quote gecursiveerd met de auteur eronder.\n\n"
+                "Begin de e-mail ALTIJD direct met een historisch correcte, feitelijk gevalideerde en écht bestaande sport- of hardloopquote "
+                "(van een bekende atleet, coach of filosoof) die perfect aansluit bij de aard en intensiteit van de nieuwste training. "
+                "Bedenk of verzin NOOIT zelf een quote en combineer geen losse uitspraken; gebruik uitsluitend 100% waargebeurde, gedocumenteerde "
+                "citaten. Plaats de quote gecursiveerd met de exacte auteur eronder.\n\n"
                 "1. DIAGNOSE RECENTE LOOP & HARTSLAGDRIFT\n"
                 "Evalueer de allernieuwste training fysiologisch. Analyseer de relatie tussen gemiddelde/maximale hartslag en duur. "
                 "Was er sprake van aerobic decoupling (hartslagdrift) tijdens de sessie en wat zegt dit over de cardiovasculaire efficiëntie van vandaag?\n\n"
@@ -128,7 +130,7 @@ jobs:
             server.sendmail(GMAIL_ADRES, EMAIL_ONTVANGER, msg.as_string())
             server.quit()
             
-            print("Succes! Mail inclusief quote en trendanalyse is onderweg.")
+            print("Succes! Mail met gevalideerde quote is verstuurd.")
 
         except Exception as e:
             print(f"Fout tijdens run: {e}")
