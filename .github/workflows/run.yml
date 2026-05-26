@@ -29,7 +29,7 @@ jobs:
     - name: Hulpprogrammas installeren
       run: pip install garminconnect google-genai
 
-    - name: Script live opbouwen (Gemini Model Fallback Upgrade)
+    - name: Script live opbouwen (Exclusive Model + Heavy Retry)
       run: |
         cat << 'EOF' > coach.py
         import os
@@ -106,7 +106,7 @@ jobs:
                 "Bedenk of verzin NOOIT zelf een quote en combineer geen losse uitspraken; gebruik uitsluitend 100% waargebeurde, gedocumenteerde "
                 "citaten. Plaats de quote gecursiveerd met de exacte auteur eronder.\n\n"
                 "1. DIAGNOSE RECENTE LOOP & HARTSLAGDRIFT\n"
-                "Evalueer de allernieuwste training fysiologisch. Analyseer de relatie tussen gemiddelde/maximale hartslag en duur. "
+                "Evalueer de allernieuwste training fysiologisch. Analyseer de relatie tussen gemiddelde/maximale hartslag nicotine en duur. "
                 "Was er sprake van aerobic decoupling (hartslagdrift) tijdens de sessie en wat zegt dit over de cardiovasculaire efficiëntie van vandaag?\n\n"
                 "2. ACUTE VS. CHRONISCHE BELASTING (10-DAGEN TREND)\n"
                 "Kijk naar de gehele geschiedenis van de afgelopen 7 trainingen. Loopt de trainingsomvang te snel op of is er sprake van gezonde periodisering? "
@@ -115,7 +115,7 @@ jobs:
                 "Bepaal welk systeem de grootste klap heeft gehad: het Centrale Zenuwstelsel (neurologisch, door hoge hartslagzones) "
                 "of het spierstelsel (mechanische impactschaal). Wat betekent dit voor de komende 48 uur?\n\n"
                 "4. EXACT METABOOL HERSTELPLAN (72 KG SPECIFIEK)\n"
-                "Bereken op basis van de calorieën en zijn gewicht of 72 kg de exacte nutritionele herstelbehoefte. "
+                "Bereken op basis van de calorieën en zijn gewicht van 72 kg de exacte nutritionele herstelbehoefte. "
                 "Geef harde streefgetallen in GRAMMEN koolhydraten en GRAMMEN eiwitten binnen het 'golden window', "
                 "inclusief de exacte vocht- en elektrolytenbehoefte in milliliters.\n\n"
                 "5. STRATEGISCH TRAININGSRECEPT (BLINDE VLEKKEN)\n"
@@ -123,24 +123,26 @@ jobs:
                 f"Hier is de Garmin datahistorie: {json.dumps(geschiedenis)}"
             )
 
-            # --- INTELLIGENTE MODEL FALLBACK STRATEGIE ---
-            modellen = ['gemini-2.5-flash', 'gemini-1.5-flash']
+            # --- EXCLUSIEVE RETRY STRATEGIE VOOR HET BESTE MODEL ---
+            model_naam = 'gemini-2.5-flash'
             response = None
+            max_pogingen = 5
+            wachttijd = 30  # We beginnen met 30 seconden rust
             
-            for model_naam in modellen:
+            for poging in range(max_pogingen):
                 try:
-                    print(f"Analyse opvragen bij {model_naam}...")
+                    print(f"Analyse opvragen bij {model_naam} (poging {poging + 1}/{max_pogingen})...")
                     response = client.models.generate_content(model=model_naam, contents=prompt)
                     print(f"Succesvol antwoord ontvangen van {model_naam}!")
                     break
                 except Exception as e:
-                    print(f"Model {model_naam} gaf een foutmelding: {e}")
-                    if model_naam != modellen[-1]:
-                        print("We schakelen direct over naar het reserve-model...")
-                        time.sleep(5)
-            
-            if not response:
-                raise Exception("Zowel het hoofd- als reservemodel van Google zijn momenteel onbereikbaar.")
+                    print(f"Gemini gaf een melding op poging {poging + 1}: {e}")
+                    if poging < max_pogingen - 1:
+                        print(f"Model is overbelast. We wachten {wachttijd} seconden en proberen het opnieuw...")
+                        time.sleep(wachttijd)
+                        wachttijd = int(wachttijd * 1.5)  # Wacht elke keer langer (30s, 45s, 67s, 100s)
+                    else:
+                        raise e
 
             analyse_tekst = response.text
 
