@@ -5,6 +5,8 @@ on:
     branches:
       - main
       - master
+  schedule:
+    - cron: '0 * * * *' # Controleert elk uur automatisch op de achtergrond
   workflow_dispatch: {}
 
 jobs:
@@ -19,12 +21,13 @@ jobs:
     - name: Hulpprogrammas installeren
       run: pip install garminconnect google-genai
 
-    - name: Script live opbouwen (Bypass Git)
+    - name: Script live opbouwen (Trend Coach + Quote Integration)
       run: |
         cat << 'EOF' > coach.py
         import os
         import json
         import smtplib
+        from datetime import datetime, timedelta
         from email.mime.text import MIMEText
         from email.mime.multipart import MIMEMultipart
         from garminconnect import Garmin
@@ -42,48 +45,70 @@ jobs:
             garmin = Garmin(GARMIN_EMAIL, GARMIN_WACHTWOORD)
             garmin.login()
             
-            print("Data ophalen...")
-            activiteiten = garmin.get_activities(0, 1)
-            if not activiteiten:
+            print("Laatste 7 activiteiten ophalen...")
+            alle_activiteiten = garmin.get_activities(0, 7)
+            if not alle_activiteiten:
                 print("Geen activiteiten gevonden.")
                 exit(0)
             
-            activiteit_data = blackberries = activiteiten[0]
-            relevante_data = {
-                "Naam": activiteit_data.get("activityName"),
-                "Type": activiteit_data.get("activityType", {}).get("typeKey"),
-                "Datum": activiteit_data.get("startTimeLocal"),
-                "Afstand (m)": activiteit_data.get("distance"),
-                "Duur (sec)": activiteit_data.get("duration"),
-                "Gemiddelde Hartslag": activiteit_data.get("averageHR"),
-                "Maximale Hartslag": activiteit_data.get("maxHR"),
-                "Calorieën": activiteit_data.get("calories"),
-                "Gemiddelde Snelheid": activiteit_data.get("averageSpeed"),
-                "Aerobe Training Stress": activiteit_data.get("aerobicTrainingEffect")
-            }
+            # Pak de allernieuwste loop voor de real-time controle
+            nieuwste_act = alle_activiteiten[0]
+            start_time_str = nieuwste_act.get("startTimeLocal")
+            
+            is_manual = os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch" or os.environ.get("GITHUB_EVENT_NAME") == "push"
+            
+            if not is_manual:
+                act_time = datetime.strptime(start_time_str, "%Y-%m-%d %H:%M:%S")
+                huidige_tijd_be = datetime.utcnow() + timedelta(hours=2) # UTC+2
+                tijdsverschil = huidige_tijd_be - act_time
+                
+                if tijdsverschil > timedelta(minutes=90):
+                    print(f"Laatste activiteit is van {start_time_str}. Langer dan 90 min geleden. Geen actie nodig.")
+                    exit(0)
+            
+            print("Nieuwe activiteit gedetecteerd! Trendlijst opbouwen...")
+            geschiedenis = []
+            for act in alle_activiteiten:
+                geschiedenis.append({
+                    "Naam": act.get("activityName"),
+                    "Type": act.get("activityType", {}).get("typeKey"),
+                    "Datum": act.get("startTimeLocal"),
+                    "Afstand (m)": act.get("distance"),
+                    "Duur (sec)": act.get("duration"),
+                    "Gemiddelde Hartslag": act.get("averageHR"),
+                    "Maximale Hartslag": act.get("maxHR"),
+                    "Calorieën": act.get("calories"),
+                    "Aerobe Training Stress": act.get("aerobicTrainingEffect")
+                })
 
-            print("Diepgaande analyse opvragen bij Gemini...")
             client = genai.Client(api_key=GEMINI_API_KEY)
             
-            # DE NIEUWE UITGEBREIDE PROMPT:
+            # DE PROMPT MET QUOTE INSTRUCTIE
             prompt = (
-                "Je bent een hoogwaardige, data-gedreven hardloopcoach en sportwetenschapper. "
-                "Analyseer de onderstaande hardloopdata extreem grondig, kritisch en uitgebreid. Avoid clichés zoals 'Lekker bezig!' "
-                "en focus puur op fysiologische inzichten, de relatie tussen snelheid en hartslag, en trainingsprogressie.\n\n"
-                "Structureer de e-mail met duidelijke, professionele secties (gebruik hoofdletters en witregels voor leesbaarheid):\n\n"
-                "1. KERNSTATISTIEKEN & DIANOSE\n"
-                "Bereken de exacte snelheid in minuten per kilometer (min/km) op basis van de meters en seconden. "
-                "Geef een fysiologische diagnose van deze specifieke training (bv. was het een herstelloop, drempeltraining, of VO2-max belasting?).\n\n"
-                "2. INTENSITEIT & HARTSLAGANALYSE\n"
-                "Analyseer de verhouding tussen de gemiddelde en maximale hartslag en de geleverde snelheid. "
-                "Wat zegt dit over de cardiovasculaire efficiëntie van de loper tijdens deze sessie? Wat vertelt de Aerobe Training Stress score ons?\n\n"
-                "3. ENERGIEVERBRUIK & METABOLISCH HERSTELADVIES\n"
-                "Kijk naar de verbrande calorieën en de intensiteit. Geef concreet, wetenschappelijk onderbouwd advies over de nodige hydratie, "
-                "koolhydraat/eiwitinname en de geschatte actieve hersteltijd voordat er weer intensief getraind kan worden.\n\n"
-                "4. STRATEGISCHTRAININGSADVIES VOOR DE VOLGENDE SESSIE\n"
-                "Geef op basis van deze specifieke data één heel concreet doel of type training mee voor de volgende keer om stagnatie te voorkomen "
-                "en de aerobe basis/snelheid verder uit te bouwen.\n\n"
-                f"Hier is de ruwe data van Garmin: {json.dumps(relevante_data)}"
+                "Je bent een elite sportwetenschapper en fysioloog. Je analyseert de hardloopgeschiedenis van een atleet "
+                "met het volgende profiel: Lengte 1m80, Gewicht 72 kg (slanke, efficiënte loper, BMI 22.2).\n\n"
+                "STRIKTE RICHTLIJN: Herhaal GEEN basisstatistieken die de atleet al direct in de Garmin Connect app kan zien. "
+                "Focus uitsluitend op diepe, onzichtbare fysiologische inzichten en de cumulatieve trend van de afgelopen 10 dagen.\n\n"
+                "Structureer de e-mail exact met de volgende specifieke onderdelen (gebruik HOOFDLETTERS voor de titels en witregels):\n\n"
+                "OPENINGSQUOTE\n"
+                "Begin de e-mail ALTIJD direct met een toepasselijke, sterke of filosofische sport/hardloopquote (van een bekende atleet, coach of filosoof) "
+                "die perfect aansluit bij de aard en intensiteit van de nieuwste training. Plaats de quote gecursiveerd met de auteur eronder.\n\n"
+                "1. DIAGNOSE RECENTE LOOP & HARTSLAGDRIFT\n"
+                "Evalueer de allernieuwste training fysiologisch. Analyseer de relatie tussen gemiddelde/maximale hartslag en duur. "
+                "Was er sprake van aerobic decoupling (hartslagdrift) tijdens de sessie en wat zegt dit over de cardiovasculaire efficiëntie van vandaag?\n\n"
+                "2. ACUTE VS. CHRONISCHE BELASTING (10-DAGEN TREND)\n"
+                "Kijk naar de gehele geschiedenis van de afgelopen 7 trainingen. Loopt de trainingsomvang te snel op of is er sprake van gezonde periodisering? "
+                "Signaleer je patronen van cumulatieve vermoeidheid over de afgelopen dagen?\n\n"
+                "3. CENTRAAL ZENUWSTELSEL VS. MECHANISCHE SCHADE\n"
+                "Bepaal welk systeem de grootste klap heeft gehad: het Centrale Zenuwstelsel (neurologisch, door hoge hartslagzones) "
+                "of het spierstelsel (mechanische impactschaal). Wat betekent dit voor de komende 48 uur?\n\n"
+                "4. EXACT METABOOL HERSTELPLAN (72 KG SPECIFIEK)\n"
+                "Bereken op basis van de calorieën en zijn gewicht van 72 kg de exacte nutritionele herstelbehoefte. "
+                "Geef harde streefgetallen in GRAMMEN koolhydraten en GRAMMEN eiwitten binnen het 'golden window', "
+                "inclusief de exacte vocht- en elektrolytenbehoefte in milliliters.\n\n"
+                "5. STRATEGISCH TRAININGSRECEPT (BLINDE VLEKKEN)\n"
+                "Geef één concreet, tactisch trainingsadvies voor de volgende sessie (duur, intensiteit, type training) om supercompensatie te triggeren.\n\n"
+                f"Hier is de Garmin datahistorie: {json.dumps(geschiedenis)}"
             )
 
             response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
@@ -93,7 +118,7 @@ jobs:
             msg = MIMEMultipart()
             msg['From'] = GMAIL_ADRES
             msg['To'] = EMAIL_ONTVANGER
-            msg['Subject'] = f"📊 Uitgebreide AI Coach Analyse: {activiteit_data.get('activityName', 'Training')}"
+            msg['Subject'] = f"🔬 Elite Trend-Analyse: {nieuwste_act.get('activityName', 'Training')}"
             msg.attach(MIMEText(analyse_tekst, 'plain'))
 
             print("Verzenden via Gmail...")
@@ -103,7 +128,7 @@ jobs:
             server.sendmail(GMAIL_ADRES, EMAIL_ONTVANGER, msg.as_string())
             server.quit()
             
-            print("Succes! Uitgebreide mail is onderweg.")
+            print("Succes! Mail inclusief quote en trendanalyse is onderweg.")
 
         except Exception as e:
             print(f"Fout tijdens run: {e}")
@@ -112,6 +137,7 @@ jobs:
 
     - name: Script uitvoeren
       env:
+        GITHUB_EVENT_NAME: ${{ github.event_name }}
         GARMIN_EMAIL: ${{ secrets.GARMIN_EMAIL }}
         GARMIN_WACHTWOORD: ${{ secrets.GARMIN_WACHTWOORD }}
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
