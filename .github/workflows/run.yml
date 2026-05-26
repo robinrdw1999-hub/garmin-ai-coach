@@ -48,7 +48,7 @@ jobs:
                 print("Geen activiteiten gevonden.")
                 exit(0)
             
-            activiteit_data = activiteiten[0]
+            activiteit_data = blackberries = activiteiten[0]
             relevante_data = {
                 "Naam": activiteit_data.get("activityName"),
                 "Type": activiteit_data.get("activityType", {}).get("typeKey"),
@@ -62,9 +62,30 @@ jobs:
                 "Aerobe Training Stress": activiteit_data.get("aerobicTrainingEffect")
             }
 
-            print("Analyse opvragen bij Gemini...")
+            print("Diepgaande analyse opvragen bij Gemini...")
             client = genai.Client(api_key=GEMINI_API_KEY)
-            prompt = f"Je bent een hardloopcoach. Analyseer deze training kort en motiverend met hersteladvies: {json.dumps(relevante_data)}"
+            
+            # DE NIEUWE UITGEBREIDE PROMPT:
+            prompt = (
+                "Je bent een hoogwaardige, data-gedreven hardloopcoach en sportwetenschapper. "
+                "Analyseer de onderstaande hardloopdata extreem grondig, kritisch en uitgebreid. Avoid clichés zoals 'Lekker bezig!' "
+                "en focus puur op fysiologische inzichten, de relatie tussen snelheid en hartslag, en trainingsprogressie.\n\n"
+                "Structureer de e-mail met duidelijke, professionele secties (gebruik hoofdletters en witregels voor leesbaarheid):\n\n"
+                "1. KERNSTATISTIEKEN & DIANOSE\n"
+                "Bereken de exacte snelheid in minuten per kilometer (min/km) op basis van de meters en seconden. "
+                "Geef een fysiologische diagnose van deze specifieke training (bv. was het een herstelloop, drempeltraining, of VO2-max belasting?).\n\n"
+                "2. INTENSITEIT & HARTSLAGANALYSE\n"
+                "Analyseer de verhouding tussen de gemiddelde en maximale hartslag en de geleverde snelheid. "
+                "Wat zegt dit over de cardiovasculaire efficiëntie van de loper tijdens deze sessie? Wat vertelt de Aerobe Training Stress score ons?\n\n"
+                "3. ENERGIEVERBRUIK & METABOLISCH HERSTELADVIES\n"
+                "Kijk naar de verbrande calorieën en de intensiteit. Geef concreet, wetenschappelijk onderbouwd advies over de nodige hydratie, "
+                "koolhydraat/eiwitinname en de geschatte actieve hersteltijd voordat er weer intensief getraind kan worden.\n\n"
+                "4. STRATEGISCHTRAININGSADVIES VOOR DE VOLGENDE SESSIE\n"
+                "Geef op basis van deze specifieke data één heel concreet doel of type training mee voor de volgende keer om stagnatie te voorkomen "
+                "en de aerobe basis/snelheid verder uit te bouwen.\n\n"
+                f"Hier is de ruwe data van Garmin: {json.dumps(relevante_data)}"
+            )
+
             response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
             analyse_tekst = response.text
 
@@ -72,7 +93,7 @@ jobs:
             msg = MIMEMultipart()
             msg['From'] = GMAIL_ADRES
             msg['To'] = EMAIL_ONTVANGER
-            msg['Subject'] = f"🏃‍♂️ AI Coach Analyse: {activiteit_data.get('activityName', 'Training')}"
+            msg['Subject'] = f"📊 Uitgebreide AI Coach Analyse: {activiteit_data.get('activityName', 'Training')}"
             msg.attach(MIMEText(analyse_tekst, 'plain'))
 
             print("Verzenden via Gmail...")
@@ -82,7 +103,7 @@ jobs:
             server.sendmail(GMAIL_ADRES, EMAIL_ONTVANGER, msg.as_string())
             server.quit()
             
-            print("Succes! Mail is onderweg.")
+            print("Succes! Uitgebreide mail is onderweg.")
 
         except Exception as e:
             print(f"Fout tijdens run: {e}")
