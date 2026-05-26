@@ -10,12 +10,7 @@ on:
 jobs:
   run-coach:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read # Dit dwingt GitHub om de computer toegang te geven tot je code
     steps:
-    - name: Code ophalen
-      uses: actions/checkout@v4
-
     - name: Python instellen
       uses: actions/setup-python@v5
       with:
@@ -23,6 +18,76 @@ jobs:
 
     - name: Hulpprogrammas installeren
       run: pip install garminconnect google-genai
+
+    - name: Script live opbouwen (Bypass Git)
+      run: |
+        cat << 'EOF' > coach.py
+        import os
+        import json
+        import smtplib
+        from email.mime.text import MIMEText
+        from email.mime.multipart import MIMEMultipart
+        from garminconnect import Garmin
+        from google import genai
+
+        GARMIN_EMAIL = os.environ.get("GARMIN_EMAIL")
+        GARMIN_WACHTWOORD = os.environ.get("GARMIN_WACHTWOORD")
+        GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+        GMAIL_ADRES = os.environ.get("GMAIL_ADRES")
+        GMAIL_APP_WACHTWOORD = os.environ.get("GMAIL_APP_WACHTWOORD")
+        EMAIL_ONTVANGER = os.environ.get("EMAIL_ONTVANGER")
+
+        try:
+            print("Inloggen bij Garmin...")
+            garmin = Garmin(GARMIN_EMAIL, GARMIN_WACHTWOORD)
+            garmin.login()
+            
+            print("Data ophalen...")
+            activiteiten = garmin.get_activities(0, 1)
+            if not activiteiten:
+                print("Geen activiteiten gevonden.")
+                exit(0)
+            
+            activiteit_data = activiteiten[0]
+            relevante_data = {
+                "Naam": activiteit_data.get("activityName"),
+                "Type": activiteit_data.get("activityType", {}).get("typeKey"),
+                "Datum": activiteit_data.get("startTimeLocal"),
+                "Afstand (m)": activiteit_data.get("distance"),
+                "Duur (sec)": activiteit_data.get("duration"),
+                "Gemiddelde Hartslag": activiteit_data.get("averageHR"),
+                "Maximale Hartslag": activiteit_data.get("maxHR"),
+                "Calorieën": activiteit_data.get("calories"),
+                "Gemiddelde Snelheid": activiteit_data.get("averageSpeed"),
+                "Aerobe Training Stress": activiteit_data.get("aerobicTrainingEffect")
+            }
+
+            print("Analyse opvragen bij Gemini...")
+            client = genai.Client(api_key=GEMINI_API_KEY)
+            prompt = f"Je bent een hardloopcoach. Analyseer deze training kort en motiverend met hersteladvies: {json.dumps(relevante_data)}"
+            response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+            analyse_tekst = response.text
+
+            print("Mail opstellen...")
+            msg = MIMEMultipart()
+            msg['From'] = GMAIL_ADRES
+            msg['To'] = EMAIL_ONTVANGER
+            msg['Subject'] = f"🏃‍♂️ AI Coach Analyse: {activiteit_data.get('activityName', 'Training')}"
+            msg.attach(MIMEText(analyse_tekst, 'plain'))
+
+            print("Verzenden via Gmail...")
+            server = smtplib.SMTP('smtp.gmail.com', 587)
+            server.starttls()
+            server.login(GMAIL_ADRES, GMAIL_APP_WACHTWOORD)
+            server.sendmail(GMAIL_ADRES, EMAIL_ONTVANGER, msg.as_string())
+            server.quit()
+            
+            print("Succes! Mail is onderweg.")
+
+        except Exception as e:
+            print(f"Fout tijdens run: {e}")
+            exit(1)
+        EOF
 
     - name: Script uitvoeren
       env:
