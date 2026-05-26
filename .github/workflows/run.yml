@@ -2,9 +2,8 @@ name: Dagelijkse Garmin AI Coach
 
 on:
   schedule:
-    # Let op: GitHub werkt in UTC tijd. 18:00 UTC is 20:00 uur in de Nederlandse zomertijd.
     - cron: '0 18 * * *'
-  workflow_dispatch: # Dit zorgt ervoor dat je ook handmatig op een knop kunt drukken om te testen
+  workflow_dispatch:
 
 jobs:
   run-coach:
