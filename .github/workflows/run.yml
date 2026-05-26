@@ -1,6 +1,9 @@
 name: Dagelijkse Garmin AI Coach
 
 on:
+  push:
+    branches:
+      - main
   schedule:
     - cron: '0 18 * * *'
   workflow_dispatch:
