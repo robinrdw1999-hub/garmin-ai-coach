@@ -1,0 +1,32 @@
+name: Dagelijkse Garmin AI Coach
+
+on:
+  schedule:
+    # Let op: GitHub werkt in UTC tijd. 18:00 UTC is 20:00 uur in de Nederlandse zomertijd.
+    - cron: '0 18 * * *'
+  workflow_dispatch: # Dit zorgt ervoor dat je ook handmatig op een knop kunt drukken om te testen
+
+jobs:
+  run-coach:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Code ophalen
+      uses: actions/checkout@v4
+
+    - name: Python instellen
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: Hulpprogrammas installeren
+      run: pip install garminconnect google-genai
+
+    - name: Script uitvoeren
+      env:
+        GARMIN_EMAIL: ${{ secrets.GARMIN_EMAIL }}
+        GARMIN_WACHTWOORD: ${{ secrets.GARMIN_WACHTWOORD }}
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        GMAIL_ADRES: ${{ secrets.GMAIL_ADRES }}
+        GMAIL_APP_WACHTWOORD: ${{ secrets.GMAIL_APP_WACHTWOORD }}
+        EMAIL_ONTVANGER: ${{ secrets.EMAIL_ONTVANGER }}
+      run: python coach.py
