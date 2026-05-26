@@ -4,13 +4,14 @@ on:
   push:
     branches:
       - main
-  schedule:
-    - cron: '0 18 * * *'
-  workflow_dispatch:
+      - master
+  workflow_dispatch: {}
 
 jobs:
   run-coach:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read # Dit dwingt GitHub om de computer toegang te geven tot je code
     steps:
     - name: Code ophalen
       uses: actions/checkout@v4
