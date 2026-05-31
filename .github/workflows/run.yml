@@ -29,7 +29,7 @@ jobs:
     - name: Hulpprogrammas installeren
       run: pip install garminconnect google-genai
 
-    - name: Script live opbouwen (Race Prep Mode)
+    - name: Script live opbouwen (Elite Wielerkoers Taper Mode)
       run: |
         cat << 'EOF' > coach.py
         import os
@@ -57,32 +57,82 @@ jobs:
             garmin = Garmin(GARMIN_EMAIL, GARMIN_WACHTWOORD)
             garmin.login(token_dir)
             
+            print("Wieleractiviteiten ophalen...")
             alle_activiteiten = garmin.get_activities(0, 10)
             if not alle_activiteiten:
+                print("Geen activiteiten gevonden.")
                 exit(0)
             
             nieuwste_act = alle_activiteiten[0]
+            start_time_str = nieuwste_act.get("startTimeLocal")
             
-            # Prompt voor de race-voorbereiding
+            is_manual = os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch" or os.environ.get("GITHUB_EVENT_NAME") == "push"
+            
+            if not is_manual:
+                act_time = datetime.strptime(start_time_str, "%Y-%m-%d %H:%M:%S")
+                huidige_tijd_be = datetime.utcnow() + timedelta(hours=2) # UTC+2 (Belgische tijd)
+                tijdsverschil = huidige_tijd_be - act_time
+                
+                if tijdsverschil > timedelta(minutes=90):
+                    print(f"Laatste activiteit is van {start_time_str}. Geen nieuwe koersprikkel gedetecteerd.")
+                    exit(0)
+            
+            print("Nieuwe wieleractiviteit gedetecteerd! Analyse starten...")
+            geschiedenis = []
+            for act in alle_activiteiten:
+                # We filteren breed maar focussen op fietsdata (cycling, road_cycling etc)
+                geschiedenis.append({
+                    "Naam": act.get("activityName"),
+                    "Type": act.get("activityType", {}).get("typeKey"),
+                    "Datum": act.get("startTimeLocal"),
+                    "Afstand (m)": act.get("distance"),
+                    "Duur (sec)": act.get("duration"),
+                    "Gemiddelde Hartslag": act.get("averageHR"),
+                    "Maximale Hartslag": act.get("maxHR"),
+                    "Calorieën": act.get("calories"),
+                    "Aerobe Training Stress": act.get("aerobicTrainingEffect"),
+                    "Anaerobe Training Stress": act.get("anaerobicTrainingEffect")
+                })
+
             client = genai.Client(api_key=GEMINI_API_KEY)
             
             prompt = (
-                "Je bent een elite sportwetenschapper. De atleet heeft op 12 juni 2026 de 'N8cht van de Kar'. "
-                "Vandaag is 31 mei. Het doel is om in deze laatste 12 dagen optimaal te pieken voor de race.\n\n"
-                "STRIKTE BEPERKINGEN:\n"
-                "- Lange duurlopen (duur > 60 min) MOGEN ALLEEN in het weekend (zaterdag 6 juni & zondag 7 juni).\n"
-                "- Weekdagen (ma-vr) moeten bestaan uit korte, intensieve intervaltrainingen, herstel of lichte onderhoudstraining.\n"
-                "- Geen zware trainingen meer in de laatste 48 uur voor de race op 12 juni.\n\n"
-                "Genereer een trainingsplan voor de komende 7 dagen tot de race. "
-                "Structureer de e-mail met:\n\n"
-                "1. RACE PREP STATUS: Analyse van de laatste activiteit in context van het race-doel.\n"
-                "2. HET WEEKPLAN: Duidelijk overzicht per dag (ma-zo).\n"
-                "3. METABOOL & HERSTEL ADVIES: Specifiek voor de race-piek.\n"
-                "4. STRATEGISCH RACETIP: Hoe de N8cht van de Kar tactisch aan te pakken.\n\n"
-                f"Datahistorie: {json.dumps(alle_activiteiten[:7])}"
+                "Je bent een elite wielercoach en inspanningsfysioloog, gespecialiseerd in het Vlaamse kermiskoers- en criteriumwerk. "
+                "Je analyseert de trainingsdata van een renner met het volgende profiel: Lengte 1m80, Gewicht 72 kg (slanke, explosieve puncher/klimmer fysiologie).\n\n"
+                "CONTEXT: De renner start op vrijdag 12 juni 2026 in de 'N8cht van de Kar' (een intensieve avond-/nachtkoers met veel bochten, "
+                "tempowisselingen en herhaaldelijk anaerobisch optrekken). Vandaag is zondag 31 mei 2026. Er resten nog exact 12 dagen tot de start. "
+                "We zitten nu in de cruciale overgang naar de taperfase.\n\n"
+                "STRIKTE TRAININGSRICHTLIJNEN VOOR HET SCHEMA:\n"
+                "- LANGE DUURTRAININGEN (Wielerspecifiek: 2.5 tot 4 uur in Zone 2 om de aerobe motor te onderhouden) MOGEN UITSLUITEND in het weekend "
+                "(zaterdag 6 juni en zondag 7 juni) worden ingepland.\n"
+                "- DOORDESWEEKSE DAGEN (ma-vr) moeten KORT zijn (< 75-90 minuten). Focus ligt hier puur op scherpte behouden zonder vermoeidheid te stapelen. "
+                "Denk aan specifieke criteriumprikkels (bijv. korte felle aanzetten na een denkbeeldige bocht, 30/30s of korte VO2max-prikkels) OF actieve recuperatie.\n"
+                "- VERMIJD uitputtende ritten doordeweeks om de glycogeenvoorraden niet structureel leeg te trekken.\n\n"
+                "Structureer de e-mail exact met de volgende specifieke wieleronderdelen (gebruik HOOFDLETTERS voor de titels en voldoende witregels):\n\n"
+                "OPENINGSQUOTE\n"
+                "Begin direct met een écht bestaande, historische wielerquote (van een legendarische flandrien, ploegleider of wielericoon) "
+                "die de opoffering, het tactische vernuft of de hardheid van de koers weerspiegelt. Geen zelfbedachte quotes. Cursief met auteur eronder.\n\n"
+                "1. ANATOMIE VAN DE LAATSTE RIT & KOERSFRISHEID\n"
+                "Evalueer de allernieuwste wielertraining fysiologisch. Kijk naar de verhouding tussen gemiddelde/maximale hartslag, de duur en de "
+                "anaerobe trainingsimpact. Zijn de benen 'open' of zien we cardiovasculaire drift die duidt op de noodzaak van directe rust?\n\n"
+                "2. STRATEGISCH KOERS-WEEKPLAN (MA-ZO)\n"
+                "Geef op basis van de laatste rit een concreet dagschema voor de komende week (maandag t.m. zondag). Houd rekening met de weekend-only regel "
+                "voor lange ritten. Specificeer voor de weekdagen de exacte duur (kort!) en de specifieke wielerprikkel (bijv. 'Criterium-simulatie: "
+                "3 blokjes van 5x 30s voluit aanzetten uit de bocht, 30s rust').\n\n"
+                "3. NEUROMUSCULAIR VS. METABOOL HERSTEL\n"
+                "Wielrennen kent geen mechanische impactschaal (zoals hardlopen), maar wel extreme neuromusculaire vermoeidheid (acidose door "
+                "het herlanceren van de fiets) en metabole uitputting (glycoceendepletie). Welk systeem heeft op basis van de trend nu de prioriteit "
+                "richting 12 juni?\n\n"
+                "4. CARBON-LOADING & SUPERCOMPENSATIE (72 KG SPECIFIEK)\n"
+                "Bereken voor deze renner van 72 kg de exacte nutritionele strategie voor de komende week. Geef harde richtlijnen in grammen koolhydraten "
+                "per dag en leg uit hoe de koolhydraatstapeling richting de avondkoers van 12 juni moet verlopen.\n\n"
+                "5. TACTISCH RECEPT VOOR DE N8CHT VAN DE KAR\n"
+                "Geef één diepgaand, technisch wieleradvies specifiek voor een avond-/nachtcriterium (denk aan positionering bij het ingaan van de bochten, "
+                "visuele focus in het schemerdonker, het aerodynamisch beschut zitten in de buik van het peloton en het besparen van kostbare wattages).\n\n"
+                f"Hier is de Garmin wielerdata: {json.dumps(geschiedenis)}"
             )
 
-            # --- EXCLUSIEVE RETRY STRATEGIE ---
+            # --- EXCLUSIEVE RETRY STRATEGIE VOOR HET BESTE MODEL ---
             model_naam = 'gemini-2.5-flash'
             response = None
             max_pogingen = 5
@@ -90,30 +140,39 @@ jobs:
             
             for poging in range(max_pogingen):
                 try:
+                    print(f"Koersanalyse opvragen bij {model_naam} (poging {poging + 1}/{max_pogingen})...")
                     response = client.models.generate_content(model=model_naam, contents=prompt)
+                    print(f"Succesvol antwoord ontvangen van {model_naam}!")
                     break
                 except Exception as e:
+                    print(f"Gemini gaf een melding op poging {poging + 1}: {e}")
                     if poging < max_pogingen - 1:
+                        print(f"Model is overbelast. We wachten {wachttijd} seconden...")
                         time.sleep(wachttijd)
                         wachttijd = int(wachttijd * 1.5)
                     else:
                         raise e
 
-            # Mail versturen
+            analyse_tekst = response.text
+
+            print("Mail opstellen...")
             msg = MIMEMultipart()
             msg['From'] = GMAIL_ADRES
             msg['To'] = EMAIL_ONTVANGER
-            msg['Subject'] = f"🚀 RACE PREP: N8cht van de Kar (12 juni) - {nieuwste_act.get('activityName')}"
-            msg.attach(MIMEText(response.text, 'plain'))
+            msg['Subject'] = f"🚴‍♂️ KOERS PREP: N8cht van de Kar — {nieuwste_act.get('activityName', 'Wielertraining')}"
+            msg.attach(MIMEText(analyse_tekst, 'plain'))
 
+            print("Verzenden via Gmail...")
             server = smtplib.SMTP('smtp.gmail.com', 587)
             server.starttls()
             server.login(GMAIL_ADRES, GMAIL_APP_WACHTWOORD)
             server.sendmail(GMAIL_ADRES, EMAIL_ONTVANGER, msg.as_string())
             server.quit()
+            
+            print("Succes! Koersadvies is verstuurd.")
 
         except Exception as e:
-            print(f"Fout: {e}")
+            print(f"Fout tijdens run: {e}")
             exit(1)
         EOF
 
