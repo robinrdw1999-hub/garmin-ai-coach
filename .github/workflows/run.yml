@@ -29,7 +29,7 @@ jobs:
     - name: Hulpprogrammas installeren
       run: pip install garminconnect google-genai
 
-    - name: Script live opbouwen (Exclusive Model + Heavy Retry)
+    - name: Script live opbouwen (Race Prep Mode)
       run: |
         cat << 'EOF' > coach.py
         import os
@@ -57,113 +57,63 @@ jobs:
             garmin = Garmin(GARMIN_EMAIL, GARMIN_WACHTWOORD)
             garmin.login(token_dir)
             
-            print("Laatste 7 activiteiten ophalen...")
-            alle_activiteiten = garmin.get_activities(0, 7)
+            alle_activiteiten = garmin.get_activities(0, 10)
             if not alle_activiteiten:
-                print("Geen activiteiten gevonden.")
                 exit(0)
             
             nieuwste_act = alle_activiteiten[0]
-            start_time_str = nieuwste_act.get("startTimeLocal")
             
-            is_manual = os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch" or os.environ.get("GITHUB_EVENT_NAME") == "push"
-            
-            if not is_manual:
-                act_time = datetime.strptime(start_time_str, "%Y-%m-%d %H:%M:%S")
-                huidige_tijd_be = datetime.utcnow() + timedelta(hours=2) # UTC+2
-                tijdsverschil = huidige_tijd_be - act_time
-                
-                if tijdsverschil > timedelta(minutes=90):
-                    print(f"Laatste activiteit is van {start_time_str}. Langer dan 90 min geleden. Geen actie nodig.")
-                    exit(0)
-            
-            print("Nieuwe activiteit gedetecteerd! Trendlijst opbouwen...")
-            geschiedenis = []
-            for act in alle_activiteiten:
-                geschiedenis.append({
-                    "Naam": act.get("activityName"),
-                    "Type": act.get("activityType", {}).get("typeKey"),
-                    "Datum": act.get("startTimeLocal"),
-                    "Afstand (m)": act.get("distance"),
-                    "Duur (sec)": act.get("duration"),
-                    "Gemiddelde Hartslag": act.get("averageHR"),
-                    "Maximale Hartslag": act.get("maxHR"),
-                    "Calorieën": act.get("calories"),
-                    "Aerobe Training Stress": act.get("aerobicTrainingEffect")
-                })
-
+            # Prompt voor de race-voorbereiding
             client = genai.Client(api_key=GEMINI_API_KEY)
             
             prompt = (
-                "Je bent een elite sportwetenschapper en fysioloog. Je analyseert de hardloopgeschiedenis van een atleet "
-                "met het volgende profiel: Lengte 1m80, Gewicht 72 kg (slanke, efficiënte loper, BMI 22.2).\n\n"
-                "STRIKTE RICHTLIJN: Herhaal GEEN basisstatistieken die de atleet al direct in de Garmin Connect app kan zien. "
-                "Focus uitsluitend op diepe, onzichtbare fysiologische inzichten en de cumulatieve trend van de afgelopen 10 dagen.\n\n"
-                "Structureer de e-mail exact met de volgende specifieke onderdelen (gebruik HOOFDLETTERS voor de titels en witregels):\n\n"
-                "OPENINGSQUOTE\n"
-                "Begin de e-mail ALTIJD direct met een historisch correcte, feitelijk gevalideerde en écht bestaande sport- of hardloopquote "
-                "(van een bekende atleet, coach of filosoof) die perfect aansluit bij de aard en intensiteit van de nieuwste training. "
-                "Bedenk of verzin NOOIT zelf een quote en combineer geen losse uitspraken; gebruik uitsluitend 100% waargebeurde, gedocumenteerde "
-                "citaten. Plaats de quote gecursiveerd met de exacte auteur eronder.\n\n"
-                "1. DIAGNOSE RECENTE LOOP & HARTSLAGDRIFT\n"
-                "Evalueer de allernieuwste training fysiologisch. Analyseer de relatie tussen gemiddelde/maximale hartslag nicotine en duur. "
-                "Was er sprake van aerobic decoupling (hartslagdrift) tijdens de sessie en wat zegt dit over de cardiovasculaire efficiëntie van vandaag?\n\n"
-                "2. ACUTE VS. CHRONISCHE BELASTING (10-DAGEN TREND)\n"
-                "Kijk naar de gehele geschiedenis van de afgelopen 7 trainingen. Loopt de trainingsomvang te snel op of is er sprake van gezonde periodisering? "
-                "Signaleer je patronen van cumulatieve vermoeidheid over de afgelopen dagen?\n\n"
-                "3. CENTRAAL ZENUWSTELSEL VS. MECHANISCHE SCHADE\n"
-                "Bepaal welk systeem de grootste klap heeft gehad: het Centrale Zenuwstelsel (neurologisch, door hoge hartslagzones) "
-                "of het spierstelsel (mechanische impactschaal). Wat betekent dit voor de komende 48 uur?\n\n"
-                "4. EXACT METABOOL HERSTELPLAN (72 KG SPECIFIEK)\n"
-                "Bereken op basis van de calorieën en zijn gewicht van 72 kg de exacte nutritionele herstelbehoefte. "
-                "Geef harde streefgetallen in GRAMMEN koolhydraten en GRAMMEN eiwitten binnen het 'golden window', "
-                "inclusief de exacte vocht- en elektrolytenbehoefte in milliliters.\n\n"
-                "5. STRATEGISCH TRAININGSRECEPT (BLINDE VLEKKEN)\n"
-                "Geef één concreet, tactisch trainingsadvies voor de volgende sessie (duur, intensiteit, type training) om supercompensatie te triggeren.\n\n"
-                f"Hier is de Garmin datahistorie: {json.dumps(geschiedenis)}"
+                "Je bent een elite sportwetenschapper. De atleet heeft op 12 juni 2026 de 'N8cht van de Kar'. "
+                "Vandaag is 31 mei. Het doel is om in deze laatste 12 dagen optimaal te pieken voor de race.\n\n"
+                "STRIKTE BEPERKINGEN:\n"
+                "- Lange duurlopen (duur > 60 min) MOGEN ALLEEN in het weekend (zaterdag 6 juni & zondag 7 juni).\n"
+                "- Weekdagen (ma-vr) moeten bestaan uit korte, intensieve intervaltrainingen, herstel of lichte onderhoudstraining.\n"
+                "- Geen zware trainingen meer in de laatste 48 uur voor de race op 12 juni.\n\n"
+                "Genereer een trainingsplan voor de komende 7 dagen tot de race. "
+                "Structureer de e-mail met:\n\n"
+                "1. RACE PREP STATUS: Analyse van de laatste activiteit in context van het race-doel.\n"
+                "2. HET WEEKPLAN: Duidelijk overzicht per dag (ma-zo).\n"
+                "3. METABOOL & HERSTEL ADVIES: Specifiek voor de race-piek.\n"
+                "4. STRATEGISCH RACETIP: Hoe de N8cht van de Kar tactisch aan te pakken.\n\n"
+                f"Datahistorie: {json.dumps(alle_activiteiten[:7])}"
             )
 
-            # --- EXCLUSIEVE RETRY STRATEGIE VOOR HET BESTE MODEL ---
+            # --- EXCLUSIEVE RETRY STRATEGIE ---
             model_naam = 'gemini-2.5-flash'
             response = None
             max_pogingen = 5
-            wachttijd = 30  # We beginnen met 30 seconden rust
+            wachttijd = 30
             
             for poging in range(max_pogingen):
                 try:
-                    print(f"Analyse opvragen bij {model_naam} (poging {poging + 1}/{max_pogingen})...")
                     response = client.models.generate_content(model=model_naam, contents=prompt)
-                    print(f"Succesvol antwoord ontvangen van {model_naam}!")
                     break
                 except Exception as e:
-                    print(f"Gemini gaf een melding op poging {poging + 1}: {e}")
                     if poging < max_pogingen - 1:
-                        print(f"Model is overbelast. We wachten {wachttijd} seconden en proberen het opnieuw...")
                         time.sleep(wachttijd)
-                        wachttijd = int(wachttijd * 1.5)  # Wacht elke keer langer (30s, 45s, 67s, 100s)
+                        wachttijd = int(wachttijd * 1.5)
                     else:
                         raise e
 
-            analyse_tekst = response.text
-
-            print("Mail opstellen...")
+            # Mail versturen
             msg = MIMEMultipart()
             msg['From'] = GMAIL_ADRES
             msg['To'] = EMAIL_ONTVANGER
-            msg['Subject'] = f"🔬 Elite Trend-Analyse: {nieuwste_act.get('activityName', 'Training')}"
-            msg.attach(MIMEText(analyse_tekst, 'plain'))
+            msg['Subject'] = f"🚀 RACE PREP: N8cht van de Kar (12 juni) - {nieuwste_act.get('activityName')}"
+            msg.attach(MIMEText(response.text, 'plain'))
 
-            print("Verzenden via Gmail...")
             server = smtplib.SMTP('smtp.gmail.com', 587)
             server.starttls()
             server.login(GMAIL_ADRES, GMAIL_APP_WACHTWOORD)
             server.sendmail(GMAIL_ADRES, EMAIL_ONTVANGER, msg.as_string())
             server.quit()
-            
-            print("Succes! Mail is verstuurd.")
 
         except Exception as e:
-            print(f"Fout tijdens run: {e}")
+            print(f"Fout: {e}")
             exit(1)
         EOF
 
