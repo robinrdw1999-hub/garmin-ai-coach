@@ -34,7 +34,7 @@ jobs:
     - name: Hulpprogrammas installeren
       run: pip install garminconnect google-genai
 
-    - name: Script live opbouwen (Unified AI Core)
+    - name: Script live opbouwen (Unified AI Core met Retry)
       run: |
         cat << 'EOF' > coach.py
         import os
@@ -146,16 +146,31 @@ jobs:
                     "DE TAPER-BALANS (DE FRISHEIDSMETER)\n\n"
                     "REALISTISCH KOERSSCENARIO & KANSBEREKENING\n"
                     "Geef een procentuele kans op (en wees fysiologisch realistisch):\n"
-                    "- % Kans op actieve koers (meeschuiven/aanvallen)\n"
+                    "- % Kans op active koers (meeschuiven/aanvallen)\n"
                     "- % Kans op anoniem uitrijden in het peloton\n"
                     "- % Kans op vroege deconnexie\n\n"
                     "HET TACTISCHE GEVECHTSPLAN (Geef 3 concrete, strategische opdrachten voor deze week en de koers zelf)\n\n"
                     f"Data: {json.dumps(geschiedenis)}"
                 )
 
+            # --- NIEUW: SLIMME RETRY-LOOP TEGEN GOOGLE OVERBELASTING ---
             print("Analyse aanvragen bij Gemini...")
-            response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+            response = None
+            max_pogingen = 5
+            wachttijd = 10  # Aantal seconden wachten bij de eerste crash
             
+            for poging in range(max_pogingen):
+                try:
+                    response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+                    break  # Gelukt! Breek uit de loop.
+                except Exception as api_e:
+                    if poging < max_pogingen - 1:
+                        print(f"Gemini server overbelast (503). Poging {poging + 1} mislukt. Slaap {wachttijd}s...")
+                        time.sleep(wachttijd)
+                        wachttijd *= 2  # Wacht elke keer dubbel zo lang (10s, 20s, 40s...)
+                    else:
+                        raise api_e  # Echt alle pogingen opgebruikt, nu pas crashen
+
             print("Mail verzenden...")
             msg = MIMEMultipart()
             msg['From'] = GMAIL_ADRES
