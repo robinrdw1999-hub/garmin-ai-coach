@@ -2,8 +2,8 @@ name: Dagelijkse Garmin AI Coach
 
 on:
   schedule:
-    - cron: '*/15 * * * *' # De automatische check op de achtergrond
-  workflow_dispatch:      # De handmatige knop met keuzemenu
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
     inputs:
       modus:
         description: 'Welke analyse wil je nu direct ontvangen?'
@@ -85,13 +85,13 @@ jobs:
                 if os.path.exists(last_id_file):
                     with open(last_id_file, "r") as f:
                         if str(f.read().strip()) == str(nieuwste_id):
-                            print("Activiteit al behandeld. We stoppen om spam te voorkomen.")
+                            print("Activiteit al behandeld. We stoppen.")
                             exit(0)
                 
                 act_time = datetime.strptime(start_time_str, "%Y-%m-%d %H:%M:%S")
                 huidige_tijd_be = datetime.utcnow() + timedelta(hours=2)
                 if huidige_tijd_be - act_time > timedelta(minutes=90):
-                    print("Geen gloednieuwe activiteit gedetecteerd in de afgelopen 90 minuten.")
+                    print("Geen gloednieuwe activiteit gedetecteerd.")
                     exit(0)
 
             geschiedenis = []
@@ -131,18 +131,25 @@ jobs:
                 prompt = (
                     "Vandaag is maandag 8 juni 2026. De renner (1m80, 72 kg) rijdt over exact 4 dagen (vrijdag 12 juni 2026) "
                     "de 'N8cht van de Kar', een slopend, technisch avondcriterium / kermiskoer in Vlaanderen.\n\n"
-                    "Je bent een meester-wieleranalist en een nuchtere, kritische ploegleider (denk aan een doorwinterde Belgische sportdirecteur). "
-                    "Analyseer de meegestuurde data van de afgelopen 10 ritten grondig. Let specifiek op de verhouding tussen aerobe basis, "
-                    "anaerobe capaciteit (de 'pijlen' om te verschieten na de bochten), en of de renner de afgelopen week wel echt aan het "
-                    "taperen is geweest.\n\n"
+                    "Je bent een deskundige, nuchtere Belgische ploegleider en wieleranalist. "
+                    "Analyseer de data van de afgelopen 10 ritten grondig. "
+                    "STRIKTE INSTRUCTIE: De renner heeft de afgelopen week intensief getraind omdat de coach dit heeft opgedragen. "
+                    "De opgebouwde vermoeidheid en fysiologische belasting in de data zijn dus GEPLANDE COMPENSATIE-ARBEID, GEEN CHRONISCHE OVERTRAINING! "
+                    "Concludeer dus NOOIT dat de renner overtraind is. Adviseer ook NOOIT om tot vrijdag volledig stil te zitten, want dat zorgt voor "
+                    "pap in de benen (verlies van spiertonus). De renner moet juist kort en scherp taperen.\n\n"
+                    "Evalueer de verhouding tussen aerobe basis en anaerobe capaciteit (de 'pijlen' om te herlanceren na de bochten). "
+                    "Geef een constructief, modern taper-advies: drastisch minder volume (duur), maar met behoud van korte, felle "
+                    "neuromusculaire prikkels om de spanning op de spieren te houden.\n\n"
                     "Schrijf een vlijmscherpe, objectieve en realistische rapportage in de ik-vorm als ploegleider. "
                     "Structureer de e-mail exact met de volgende hoofdtitels in HOOFDLETTERS:\n\n"
                     "DE RAUWE DIAGNOSE (HET RENNERSPROFIEL)\n\n"
                     "DE TAPER-BALANS (DE FRISHEIDSMETER)\n\n"
                     "REALISTISCH KOERSSCENARIO & KANSBEREKENING\n"
-                    "Geef een procentuele kans op:\n"
-                    "- % Kans op actieve koers\n- % Kans op anoniem uitrijden\n- % Kans op vroege deconnexie\n\n"
-                    "HET TACTISCHE GEVECHTSPLAN (Geef 3 concrete opdrachten)\n\n"
+                    "Geef een procentuele kans op (en wees fysiologisch realistisch):\n"
+                    "- % Kans op actieve koers (meeschuiven/aanvallen)\n"
+                    "- % Kans op anoniem uitrijden in het peloton\n"
+                    "- % Kans op vroege deconnexie\n\n"
+                    "HET TACTISCHE GEVECHTSPLAN (Geef 3 concrete, strategische opdrachten voor deze week en de koers zelf)\n\n"
                     f"Data: {json.dumps(geschiedenis)}"
                 )
 
@@ -173,7 +180,7 @@ jobs:
             exit(1)
         EOF
 
-    - name: Script Capsuleren
+    - name: Script Uitvoeren
       env:
         GITHUB_EVENT_NAME: ${{ github.event_name }}
         CHOSEN_MODUS: ${{ github.event.inputs.modus }}
