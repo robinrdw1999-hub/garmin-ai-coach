@@ -1,11 +1,11 @@
-name: 📊 Koers Kansen Checker (On-Demand)
+name: Koers Kansen Checker
 
 on:
   push:
     branches:
       - main
       - master
-  workflow_dispatch:
+  workflow_dispatch: {} # Nu correct afgesloten zodat GitHub hem herkent!
 
 jobs:
   check-chances:
@@ -79,13 +79,13 @@ jobs:
             client = genai.Client(api_key=GEMINI_API_KEY)
             
             prompt = (
-                "Vandaag is maandag 8 juni 2026. De renner (1m80, 72 kg) rijdt over exact 4 dagen (vrijdag 12 juni 2026) "
+                "Vandaag is maandag 8 juni 2026. De renner (1m80, 72 kg) rijdt over exact 4 days (vrijdag 12 juni 2026) "
                 "de 'N8cht van de Kar', een slopend, technisch avondcriterium / kermiskoer in Vlaanderen.\n\n"
                 "Je bent een meester-wieleranalist en een nuchtere, kritische ploegleider (denk aan een doorwinterde Belgische sportdirecteur). "
                 "Analyseer de meegestuurde data van de afgelopen 10 ritten grondig. Let specifiek op de verhouding tussen aerobe basis, "
                 "anaerobe capaciteit (de 'pijlen' om te verschieten na de bochten), en of de renner de afgelopen week wel echt aan het "
                 "taperen (rusten met behoud van scherpte) is geweest.\n\n"
-                "Schrijf een vlijmscherpe, objectieve en realistische rapportage in de ik-vorm als ploegleizer. "
+                "Schrijf een vlijmscherpe, objectieve en realistische rapportage in de ik-vorm als ploegleider. "
                 "Structureer de e-mail exact met de volgende hoofdtitels (in HOOFDLETTERS):\n\n"
                 "DE RAUWE DIAGNOSE (HET RENNERSPROFIEL)\n"
                 "Wat voor vlees hebben we in de kuip op basis van deze 10 ritten? Is het een diesel die moeite gaat hebben met het "
