@@ -1,7 +1,11 @@
 name: 📊 Koers Kansen Checker (On-Demand)
 
 on:
-  workflow_dispatch: {} # Dit zorgt ervoor dat je hem puur handmatig start wanneer jij dat wilt
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
 
 jobs:
   check-chances:
@@ -55,7 +59,7 @@ jobs:
             alle_activiteiten = garmin.get_activities(0, 10)
             if not alle_activiteiten:
                 print("Geen data gevonden.")
-                exit(1)
+                exit(0)
             
             geschiedenis = []
             for act in alle_activiteiten:
@@ -72,20 +76,18 @@ jobs:
                     "Anaerobe Training Stress": act.get("anaerobicTrainingEffect")
                 })
 
-            nu_be = datetime.utcnow() + timedelta(hours=2)
-            
             client = genai.Client(api_key=GEMINI_API_KEY)
             
             prompt = (
-                f"Vandaag is maandag 8 juni 2026. De renner (1m80, 72 kg) rijdt over exact 4 dagen (vrijdag 12 juni 2026) "
+                "Vandaag is maandag 8 juni 2026. De renner (1m80, 72 kg) rijdt over exact 4 dagen (vrijdag 12 juni 2026) "
                 "de 'N8cht van de Kar', een slopend, technisch avondcriterium / kermiskoer in Vlaanderen.\n\n"
                 "Je bent een meester-wieleranalist en een nuchtere, kritische ploegleider (denk aan een doorwinterde Belgische sportdirecteur). "
                 "Analyseer de meegestuurde data van de afgelopen 10 ritten grondig. Let specifiek op de verhouding tussen aerobe basis, "
                 "anaerobe capaciteit (de 'pijlen' om te verschieten na de bochten), en of de renner de afgelopen week wel echt aan het "
                 "taperen (rusten met behoud van scherpte) is geweest.\n\n"
-                "Schrijf een vlijmscherpe, objectieve en realistische rapportage in de ik-vorm als ploegleider. "
+                "Schrijf een vlijmscherpe, objectieve en realistische rapportage in de ik-vorm als ploegleizer. "
                 "Structureer de e-mail exact met de volgende hoofdtitels (in HOOFDLETTERS):\n\n"
-                "DE RAUWE DIAGNOSE (HET RENNERSPOERFIEL)\n"
+                "DE RAUWE DIAGNOSE (HET RENNERSPROFIEL)\n"
                 "Wat voor vlees hebben we in de kuip op basis van deze 10 ritten? Is het een diesel die moeite gaat hebben met het "
                 "herlanceren na 60 haakse bochten, of zit er genoeg explosiviteit (anaerobe scores) in de data?\n\n"
                 "DE TAPER-BALANS (DE FRISHEIDSMETER)\n"
@@ -103,7 +105,6 @@ jobs:
                 f"Hier is de volledige trainingshistorie van de renner: {json.dumps(geschiedenis)}"
             )
 
-            # --- ROBUUSTE RETRY LOGICA ---
             model_naam = 'gemini-2.5-flash'
             response = None
             max_pogingen = 5
