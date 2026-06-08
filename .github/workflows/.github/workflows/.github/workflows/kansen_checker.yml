@@ -1,0 +1,151 @@
+name: 📊 Koers Kansen Checker (On-Demand)
+
+on:
+  workflow_dispatch: {} # Dit zorgt ervoor dat je hem puur handmatig start wanneer jij dat wilt
+
+jobs:
+  check-chances:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Python instellen
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: Garmin Token Cache laden
+      uses: actions/cache@v4
+      with:
+        path: ~/.garminconnect
+        key: garmin-tokens-${{ github.run_id }}
+        restore-keys: |
+          garmin-tokens-
+
+    - name: Hulpprogrammas installeren
+      run: pip install garminconnect google-genai
+
+    - name: Script live opbouwen (Chances Predictor)
+      run: |
+        cat << 'EOF' > kansen.py
+        import os
+        import json
+        import time
+        import smtplib
+        from datetime import datetime, timedelta
+        from email.mime.text import MIMEText
+        from email.mime.multipart import MIMEMultipart
+        from garminconnect import Garmin
+        from google import genai
+
+        GARMIN_EMAIL = os.environ.get("GARMIN_EMAIL")
+        GARMIN_WACHTWOORD = os.environ.get("GARMIN_WACHTWOORD")
+        GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+        GMAIL_ADRES = os.environ.get("GMAIL_ADRES")
+        GMAIL_APP_WACHTWOORD = os.environ.get("GMAIL_APP_WACHTWOORD")
+        EMAIL_ONTVANGER = os.environ.get("EMAIL_ONTVANGER")
+
+        try:
+            print("Inloggen bij Garmin...")
+            token_dir = os.path.expanduser("~/.garminconnect")
+            os.makedirs(token_dir, exist_ok=True)
+            
+            garmin = Garmin(GARMIN_EMAIL, GARMIN_WACHTWOORD)
+            garmin.login(token_dir)
+            
+            print("Laatste 10 wieleractiviteiten ophalen voor diepe trendanalyse...")
+            alle_activiteiten = garmin.get_activities(0, 10)
+            if not alle_activiteiten:
+                print("Geen data gevonden.")
+                exit(1)
+            
+            geschiedenis = []
+            for act in alle_activiteiten:
+                geschiedenis.append({
+                    "Naam": act.get("activityName"),
+                    "Type": act.get("activityType", {}).get("typeKey"),
+                    "Datum": act.get("startTimeLocal"),
+                    "Afstand (m)": act.get("distance"),
+                    "Duur (sec)": act.get("duration"),
+                    "Gemiddelde Hartslag": act.get("averageHR"),
+                    "Maximale Hartslag": act.get("maxHR"),
+                    "Calorieën": act.get("calories"),
+                    "Aerobe Training Stress": act.get("aerobicTrainingEffect"),
+                    "Anaerobe Training Stress": act.get("anaerobicTrainingEffect")
+                })
+
+            nu_be = datetime.utcnow() + timedelta(hours=2)
+            
+            client = genai.Client(api_key=GEMINI_API_KEY)
+            
+            prompt = (
+                f"Vandaag is maandag 8 juni 2026. De renner (1m80, 72 kg) rijdt over exact 4 dagen (vrijdag 12 juni 2026) "
+                "de 'N8cht van de Kar', een slopend, technisch avondcriterium / kermiskoer in Vlaanderen.\n\n"
+                "Je bent een meester-wieleranalist en een nuchtere, kritische ploegleider (denk aan een doorwinterde Belgische sportdirecteur). "
+                "Analyseer de meegestuurde data van de afgelopen 10 ritten grondig. Let specifiek op de verhouding tussen aerobe basis, "
+                "anaerobe capaciteit (de 'pijlen' om te verschieten na de bochten), en of de renner de afgelopen week wel echt aan het "
+                "taperen (rusten met behoud van scherpte) is geweest.\n\n"
+                "Schrijf een vlijmscherpe, objectieve en realistische rapportage in de ik-vorm als ploegleider. "
+                "Structureer de e-mail exact met de volgende hoofdtitels (in HOOFDLETTERS):\n\n"
+                "DE RAUWE DIAGNOSE (HET RENNERSPOERFIEL)\n"
+                "Wat voor vlees hebben we in de kuip op basis van deze 10 ritten? Is het een diesel die moeite gaat hebben met het "
+                "herlanceren na 60 haakse bochten, of zit er genoeg explosiviteit (anaerobe scores) in de data?\n\n"
+                "DE TAPER-BALANS (DE FRISHEIDSMETER)\n"
+                "Heeft de renner zich de afgelopen week braaf aan de korte prikkels gehouden, of zien we vermoeidheidscumulatie? "
+                "Staan de fysiologische parameters op groen voor supercompensatie op vrijdag?\n\n"
+                "REALISTISCH KOERSSCENARIO & KANSBEREKENING\n"
+                "Wees pijnlijk eerlijk. Geef een procentuele kans op de volgende scenario's:\n"
+                "- % Kans op actieve koers (meeschuiven met vroege vlucht/aanvallen)\n"
+                "- % Kans op anoniem uitrijden in de buik van het peloton\n"
+                "- % Kans op vroege deconnexie (eraf gereden worden door lactaat-verstikking)\n"
+                "Motiveer deze percentages puur op basis van de harde cijfers uit de geschiedenis.\n\n"
+                "HET TACTISCHE GEVECHTSPLAN\n"
+                "Geef 3 concrete, strategische opdrachten voor vrijdagavond om zijn specifieke zwaktes (uit de data) te camoufleren "
+                "en sterktes maximaal uit te baten. Hoe overleeft hij de eerste 20 minuten chaos?\n\n"
+                f"Hier is de volledige trainingshistorie van de renner: {json.dumps(geschiedenis)}"
+            )
+
+            # --- ROBUUSTE RETRY LOGICA ---
+            model_naam = 'gemini-2.5-flash'
+            response = None
+            max_pogingen = 5
+            wachttijd = 30
+            
+            for poging in range(max_pogingen):
+                try:
+                    print(f"Ploegleidersanalyse opvragen bij {model_naam}...")
+                    response = client.models.generate_content(model=model_naam, contents=prompt)
+                    break
+                except Exception as e:
+                    if poging < max_pogingen - 1:
+                        time.sleep(wachttijd)
+                        wachttijd = int(wachttijd * 1.5)
+                    else:
+                        raise e
+
+            print("Rapportage verzenden...")
+            msg = MIMEMultipart()
+            msg['From'] = GMAIL_ADRES
+            msg['To'] = EMAIL_ONTVANGER
+            msg['Subject'] = f"📊 CRITERIUM ANALYSE: Jouw realistische kansen voor N8cht van de Kar"
+            msg.attach(MIMEText(response.text, 'plain'))
+
+            server = smtplib.SMTP('smtp.gmail.com', 587)
+            server.starttls()
+            server.login(GMAIL_ADRES, GMAIL_APP_WACHTWOORD)
+            server.sendmail(GMAIL_ADRES, EMAIL_ONTVANGER, msg.as_string())
+            server.quit()
+            print("Analyse succesvol verzonden!")
+
+        except Exception as e:
+            print(f"Fout in kansenberekening: {e}")
+            exit(1)
+        EOF
+
+    - name: Script uitvoeren
+      env:
+        GARMIN_EMAIL: ${{ secrets.GARMIN_EMAIL }}
+        GARMIN_WACHTWOORD: ${{ secrets.GARMIN_WACHTWOORD }}
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        GMAIL_ADRES: ${{ secrets.GMAIL_ADRES }}
+        GMAIL_APP_WACHTWOORD: ${{ secrets.GMAIL_APP_WACHTWOORD }}
+        EMAIL_ONTVANGER: ${{ secrets.EMAIL_ONTVANGER }}
+      run: python kansen.py
