@@ -34,7 +34,7 @@ jobs:
     - name: Hulpprogrammas installeren
       run: pip install garminconnect google-genai
 
-    - name: Script live opbouwen (Unified AI Core met Retry)
+    - name: Script live opbouwen (Unified AI Core met Slimme Datum)
       run: |
         cat << 'EOF' > coach.py
         import os
@@ -78,7 +78,9 @@ jobs:
             
             nieuwste_act = alle_activiteiten[0]
             nieuwste_id = nieuwste_act.get("activityId")
-            start_time_str = nieuwste_act.get("startTimeLocal")
+            start_time_str = nieuwste_act.get("startTimeLocal") # Formaat: YYYY-MM-DD HH:MM:SS
+            
+            nu_be = datetime.utcnow() + timedelta(hours=2)
             
             if MODUS == "auto_coach":
                 last_id_file = os.path.join(token_dir, "last_activity_id.txt")
@@ -89,8 +91,7 @@ jobs:
                             exit(0)
                 
                 act_time = datetime.strptime(start_time_str, "%Y-%m-%d %H:%M:%S")
-                huidige_tijd_be = datetime.utcnow() + timedelta(hours=2)
-                if huidige_tijd_be - act_time > timedelta(minutes=90):
+                if nu_be - act_time > timedelta(minutes=90):
                     print("Geen gloednieuwe activiteit gedetecteerd.")
                     exit(0)
 
@@ -109,35 +110,47 @@ jobs:
                     "Anaerobe Training Stress": act.get("anaerobicTrainingEffect")
                 })
 
-            nu_be = datetime.utcnow() + timedelta(hours=2)
+            # --- DYNAMISCHE DATUMBEREKENING ---
+            dagen = ["maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag", "zondag"]
+            maanden = ["januari", "februari", "maart", "april", "mei", "juni", "juli", "augustus", "september", "oktober", "november", "december"]
+            vandaag_voluit = f"{dagen[nu_be.weekday()]} {nu_be.day} {maanden[nu_be.month - 1]} {nu_be.year}"
+            
+            # Controleer of de meest recente rit écht van vandaag is
+            rit_datum_str = start_time_str.split(" ")[0] # Geeft YYYY-MM-DD
+            vandaag_str = nu_be.strftime("%Y-%m-%d")
+            
+            if rit_datum_str == vandaag_str:
+                training_status = f"De renner heeft VANDAAG ({vandaag_voluit}) al getraind. De meest recente rit in de data is van vandaag."
+            else:
+                training_status = f"De renner heeft vandaag ({vandaag_voluit}) nog NIET getraind. De meest recente rit in de meegestuurde data is van GISTEREN of eerder ({start_time_str})."
+
             client = genai.Client(api_key=GEMINI_API_KEY)
 
             if MODUS in ["auto_coach", "resterende_dagen"]:
                 subject = f"🚴‍♂️ MAP: Plan resterende dagen vanaf morgen — {nieuwste_act.get('activityName', 'Wielertraining')}"
                 prompt = (
                     f"Je bent een elite wielercoach. De renner heeft op vrijdag 12 juni 2026 de 'N8cht van de Kar' (avondcriterium).\n"
-                    f"BELANGRIJKE TIMING: Vandaag is exact maandag 8 juni 2026. De renner heeft VANDAAG al getraind.\n\n"
+                    f"BELANGRIJKE TIMING: Vandaag is exact {vandaag_voluit}.\n"
+                    f"TRAININGSTATUS VAN VANDAAG: {training_status}\n\n"
                     "STRIKTE RICHTLIJN VOOR HET SCHEMA:\n"
-                    "- Geef GEEN trainingsvoorstel voor vandaag, want die rit is al gedaan.\n"
-                    "- Genereer uitsluitend een concreet trainingsvoorstel voor de RESTERENDE dagen van deze week (vanaf morgen tot en met zondag).\n"
+                    "- Pas je advies aan op de trainingsstatus. Als de renner vandaag nog NIET getraind heeft, mag je voor vandaag nog een korte prikkel of herstelrit inplannen.\n"
+                    "- Genereer uitsluitend een concreet trainingsvoorstel voor de RESTERENDE dagen van deze week (tot en met zondag).\n"
                     "- DOORDESWEEKSE RESTERENDE DAGEN moeten KORT zijn (< 75-90 minuten) met specifieke criteriumprikkels of actieve herstelritten.\n\n"
                     "Structureer de e-mail exact met de volgende onderdelen in HOOFDLETTERS:\n\n"
-                    "OPENINGSQUOTE\n\n1. ANATOMIE VAN DE RIT VAN VANDAAG\n\n2. HET RESTERENDE WEEKPLAN (VANAF MORGEN)\n\n3. NEUROMUSCULAIR VS. METABOOL HERSTEL\n\n4. CARBON-LOADING & SUPERCOMPENSATIE (72 KG SPECIFIEK)\n\n5. TACTISCH RECEPT VOOR DE N8CHT VAN DE KAR\n\n"
+                    "OPENINGSQUOTE\n\n1. ANATOMIE VAN DE LAATSTE RIT\n\n2. HET RESTERENDE WEEKPLAN (VANAF MORGEN OF VANAVOND)\n\n3. NEUROMUSCULAIR VS. METABOOL HERSTEL\n\n4. CARBON-LOADING & SUPERCOMPENSATIE (72 KG SPECIFIEK)\n\n5. TACTISCH RECEPT VOOR DE N8CHT VAN DE KAR\n\n"
                     f"Data: {json.dumps(geschiedenis)}"
                 )
 
             else:
                 subject = f"📊 CRITERIUM ANALYSE: Jouw realistische kansen voor N8cht van de Kar"
                 prompt = (
-                    "Vandaag is maandag 8 juni 2026. De renner (1m80, 72 kg) rijdt over exact 4 dagen (vrijdag 12 juni 2026) "
+                    f"Vandaag is exact {vandaag_voluit}. De renner (1m80, 72 kg) rijdt over exact een aantal dagen (vrijdag 12 juni 2026) "
                     "de 'N8cht van de Kar', een slopend, technisch avondcriterium / kermiskoer in Vlaanderen.\n\n"
                     "Je bent een deskundige, nuchtere Belgische ploegleider en wieleranalist. "
                     "Analyseer de data van de afgelopen 10 ritten grondig. "
-                    "STRIKTE INSTRUCTIE: De renner heeft de afgelopen week intensief getraind omdat de coach dit heeft opgedragen. "
-                    "De opgebouwde vermoeidheid en fysiologische belasting in de data zijn dus GEPLANDE COMPENSATIE-ARBEID, GEEN CHRONISCHE OVERTRAINING! "
-                    "Concludeer dus NOOIT dat de renner overtraind is. Adviseer ook NOOIT om tot vrijdag volledig stil te zitten, want dat zorgt voor "
-                    "pap in de benen (verlies van spiertonus). De renner moet juist kort en scherp taperen.\n\n"
-                    "Evalueer de verhouding tussen aerobe basis en anaerobe capaciteit (de 'pijlen' om te herlanceren na de bochten). "
+                    "STRIKTE INSTRUCTIE: De opgebouwde vermoeidheid en fysiologische belasting in de data zijn GEPLANDE COMPENSATIE-ARBEID, GEEN CHRONISCHE OVERTRAINING! "
+                    "Concludeer dus NOOIT dat de renner overtraind is. Adviseer ook NOOIT om tot vrijdag volledig stil te zitten. De renner moet juist kort en scherp taperen.\n\n"
+                    "Evalueer de verhouding tussen aerobe basis en anaerobe capaciteit. "
                     "Geef een constructief, modern taper-advies: drastisch minder volume (duur), maar met behoud van korte, felle "
                     "neuromusculaire prikkels om de spanning op de spieren te houden.\n\n"
                     "Schrijf een vlijmscherpe, objectieve en realistische rapportage in de ik-vorm als ploegleider. "
@@ -153,23 +166,22 @@ jobs:
                     f"Data: {json.dumps(geschiedenis)}"
                 )
 
-            # --- NIEUW: SLIMME RETRY-LOOP TEGEN GOOGLE OVERBELASTING ---
             print("Analyse aanvragen bij Gemini...")
             response = None
             max_pogingen = 5
-            wachttijd = 10  # Aantal seconden wachten bij de eerste crash
+            wachttijd = 10
             
             for poging in range(max_pogingen):
                 try:
                     response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
-                    break  # Gelukt! Breek uit de loop.
+                    break
                 except Exception as api_e:
                     if poging < max_pogingen - 1:
                         print(f"Gemini server overbelast (503). Poging {poging + 1} mislukt. Slaap {wachttijd}s...")
                         time.sleep(wachttijd)
-                        wachttijd *= 2  # Wacht elke keer dubbel zo lang (10s, 20s, 40s...)
+                        wachttijd *= 2
                     else:
-                        raise api_e  # Echt alle pogingen opgebruikt, nu pas crashen
+                        raise api_e
 
             print("Mail verzenden...")
             msg = MIMEMultipart()
