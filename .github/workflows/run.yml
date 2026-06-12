@@ -34,7 +34,7 @@ jobs:
     - name: Hulpprogrammas installeren
       run: pip install garminconnect google-genai
 
-    - name: Script live opbouwen (Unified AI Core met Slimme Datum)
+    - name: Script live opbouwen (Focus: Wijtschaete & Crit Repeatability)
       run: |
         cat << 'EOF' > coach.py
         import os
@@ -63,14 +63,13 @@ jobs:
             MODUS = GEKOZEN_INPUT
 
         try:
-            print(f"Inloggen bij Garmin voor modus: {MODUS}...")
+            print(f"Inloggen bij Garmin...")
             token_dir = os.path.expanduser("~/.garminconnect")
             os.makedirs(token_dir, exist_ok=True)
             
             garmin = Garmin(GARMIN_EMAIL, GARMIN_WACHTWOORD)
             garmin.login(token_dir)
             
-            print("Wieleractiviteiten ophalen...")
             alle_activiteiten = garmin.get_activities(0, 10)
             if not alle_activiteiten:
                 print("Geen activiteiten gevonden.")
@@ -78,7 +77,7 @@ jobs:
             
             nieuwste_act = alle_activiteiten[0]
             nieuwste_id = nieuwste_act.get("activityId")
-            start_time_str = nieuwste_act.get("startTimeLocal") # Formaat: YYYY-MM-DD HH:MM:SS
+            start_time_str = nieuwste_act.get("startTimeLocal")
             
             nu_be = datetime.utcnow() + timedelta(hours=2)
             
@@ -87,12 +86,12 @@ jobs:
                 if os.path.exists(last_id_file):
                     with open(last_id_file, "r") as f:
                         if str(f.read().strip()) == str(nieuwste_id):
-                            print("Activiteit al behandeld. We stoppen.")
+                            print("Al behandeld.")
                             exit(0)
                 
                 act_time = datetime.strptime(start_time_str, "%Y-%m-%d %H:%M:%S")
                 if nu_be - act_time > timedelta(minutes=90):
-                    print("Geen gloednieuwe activiteit gedetecteerd.")
+                    print("Geen nieuwe rit.")
                     exit(0)
 
             geschiedenis = []
@@ -105,83 +104,52 @@ jobs:
                     "Duur (sec)": act.get("duration"),
                     "Gemiddelde Hartslag": act.get("averageHR"),
                     "Maximale Hartslag": act.get("maxHR"),
-                    "Calorieën": act.get("calories"),
                     "Aerobe Training Stress": act.get("aerobicTrainingEffect"),
                     "Anaerobe Training Stress": act.get("anaerobicTrainingEffect")
                 })
 
-            # --- DYNAMISCHE DATUMBEREKENING ---
             dagen = ["maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag", "zondag"]
             maanden = ["januari", "februari", "maart", "april", "mei", "juni", "juli", "augustus", "september", "oktober", "november", "december"]
             vandaag_voluit = f"{dagen[nu_be.weekday()]} {nu_be.day} {maanden[nu_be.month - 1]} {nu_be.year}"
-            
-            # Controleer of de meest recente rit écht van vandaag is
-            rit_datum_str = start_time_str.split(" ")[0] # Geeft YYYY-MM-DD
-            vandaag_str = nu_be.strftime("%Y-%m-%d")
-            
-            if rit_datum_str == vandaag_str:
-                training_status = f"De renner heeft VANDAAG ({vandaag_voluit}) al getraind. De meest recente rit in de data is van vandaag."
-            else:
-                training_status = f"De renner heeft vandaag ({vandaag_voluit}) nog NIET getraind. De meest recente rit in de meegestuurde data is van GISTEREN of eerder ({start_time_str})."
 
             client = genai.Client(api_key=GEMINI_API_KEY)
 
             if MODUS in ["auto_coach", "resterende_dagen"]:
-                subject = f"🚴‍♂️ MAP: Plan resterende dagen vanaf morgen — {nieuwste_act.get('activityName', 'Wielertraining')}"
+                subject = f"🚀 WIJTSCHAETE PREP: Jouw Anaerobe Schema vanaf morgen"
                 prompt = (
-                    f"Je bent een elite wielercoach. De renner heeft op vrijdag 12 juni 2026 de 'N8cht van de Kar' (avondcriterium).\n"
-                    f"BELANGRIJKE TIMING: Vandaag is exact {vandaag_voluit}.\n"
-                    f"TRAININGSTATUS VAN VANDAAG: {training_status}\n\n"
-                    "STRIKTE RICHTLIJN VOOR HET SCHEMA:\n"
-                    "- Pas je advies aan op de trainingsstatus. Als de renner vandaag nog NIET getraind heeft, mag je voor vandaag nog een korte prikkel of herstelrit inplannen.\n"
-                    "- Genereer uitsluitend een concreet trainingsvoorstel voor de RESTERENDE dagen van deze week (tot en met zondag).\n"
-                    "- DOORDESWEEKSE RESTERENDE DAGEN moeten KORT zijn (< 75-90 minuten) met specifieke criteriumprikkels of actieve herstelritten.\n\n"
-                    "Structureer de e-mail exact met de volgende onderdelen in HOOFDLETTERS:\n\n"
-                    "OPENINGSQUOTE\n\n1. ANATOMIE VAN DE LAATSTE RIT\n\n2. HET RESTERENDE WEEKPLAN (VANAF MORGEN OF VANAVOND)\n\n3. NEUROMUSCULAIR VS. METABOOL HERSTEL\n\n4. CARBON-LOADING & SUPERCOMPENSATIE (72 KG SPECIFIEK)\n\n5. TACTISCH RECEPT VOOR DE N8CHT VAN DE KAR\n\n"
+                    f"Je bent een elite wielercoach. De renner heeft op zaterdag 11 juli 2026 de 'Wijtschaete koers' (kermiskoer).\n"
+                    f"DOELSTELLING: De renner heeft een sterke motor (FTP/aeroob), maar is vandaag na 16km uit koers gereden omdat hij "
+                    "kraakte op de constante spurts/herlanceringen na de bochten (Repeated Sprint Ability / Anaerobe capaciteit tekort).\n"
+                    f"TIMING: Vandaag is exact {vandaag_voluit}. De renner kan van woensdag 1 juli t/m zondag 5 juli HELEMAAL NIET TRAINEN wegens vakantie/verplichtingen.\n\n"
+                    "STRIKTE RICHTLIJNEN VOOR JOUW TRAININGSVOORSTELLEN:\n"
+                    "1. BLOCK 1 (Nu t/m 30 juni): Rammen op anaerobe herhaalbaarheid. Schrijf loeiharde kermiskoer-simulaties voor (bijv. Tabata's, 30/30s, 40/20s, of 15-seconden full gas herlanceringen met korte rust).\n"
+                    "2. BLOCK 2 (1 juli t/m 5 juli): Schrijf GEEN trainingen voor. Vermeld dat dit een gedwongen de-load is voor supercompensatie.\n"
+                    "3. BLOCK 3 (6 juli t/m 10 juli): Re-activatie. Korte ritten met een paar vlijmscherpe prikkels om de spiertonus terug te halen na de inactiviteit.\n\n"
+                    "Structureer je mail ALTIJD met deze titels:\n"
+                    "OPENINGSQUOTE (Motiverend maar nuchter)\n"
+                    "1. DE DIAGNOSE VAN HET TEKORT (Waarom ging het vandaag mis?)\n"
+                    "2. JOUW SPECIFIEKE TARGET WORKOUT VOOR MORGEN (Geef exacte wattages/zones of gevoelstermijnen voor de sprints)\n"
+                    "3. DE ROUTE NAAR WIJTSCHAETE (Hoe we de juliblokkade tackelen)\n"
                     f"Data: {json.dumps(geschiedenis)}"
                 )
-
             else:
-                subject = f"📊 CRITERIUM ANALYSE: Jouw realistische kansen voor N8cht van de Kar"
+                subject = f"📊 KANSEN CHECKER: Wijtschaete koers (11 juli)"
                 prompt = (
-                    f"Vandaag is exact {vandaag_voluit}. De renner (1m80, 72 kg) rijdt over exact een aantal dagen (vrijdag 12 juni 2026) "
-                    "de 'N8cht van de Kar', een slopend, technisch avondcriterium / kermiskoer in Vlaanderen.\n\n"
-                    "Je bent een deskundige, nuchtere Belgische ploegleider en wieleranalist. "
-                    "Analyseer de data van de afgelopen 10 ritten grondig. "
-                    "STRIKTE INSTRUCTIE: De opgebouwde vermoeidheid en fysiologische belasting in de data zijn GEPLANDE COMPENSATIE-ARBEID, GEEN CHRONISCHE OVERTRAINING! "
-                    "Concludeer dus NOOIT dat de renner overtraind is. Adviseer ook NOOIT om tot vrijdag volledig stil te zitten. De renner moet juist kort en scherp taperen.\n\n"
-                    "Evalueer de verhouding tussen aerobe basis en anaerobe capaciteit. "
-                    "Geef een constructief, modern taper-advies: drastisch minder volume (duur), maar met behoud van korte, felle "
-                    "neuromusculaire prikkels om de spanning op de spieren te houden.\n\n"
-                    "Schrijf een vlijmscherpe, objectieve en realistische rapportage in de ik-vorm als ploegleider. "
-                    "Structureer de e-mail exact met de volgende hoofdtitels in HOOFDLETTERS:\n\n"
-                    "DE RAUWE DIAGNOSE (HET RENNERSPROFIEL)\n\n"
-                    "DE TAPER-BALANS (DE FRISHEIDSMETER)\n\n"
-                    "REALISTISCH KOERSSCENARIO & KANSBEREKENING\n"
-                    "Geef een procentuele kans op (en wees fysiologisch realistisch):\n"
-                    "- % Kans op active koers (meeschuiven/aanvallen)\n"
-                    "- % Kans op anoniem uitrijden in het peloton\n"
-                    "- % Kans op vroege deconnexie\n\n"
-                    "HET TACTISCHE GEVECHTSPLAN (Geef 3 concrete, strategische opdrachten voor deze week en de koers zelf)\n\n"
+                    f"Vandaag is exact {vandaag_voluit}. Analyseer de kansen van de renner (72kg) voor Wijtschaete op 11 juli.\n"
+                    "Neem mee dat hij een goede basismotor heeft maar moeite heeft met herlanceringen na de bocht, én 5 dagen stilzit begin juli.\n"
+                    "Geef een realistische procentuele kans op:\n"
+                    "- % Kans op actieve koers\n- % Kans op pelotonfinish\n- % Kans op vroege deconnexie\n"
                     f"Data: {json.dumps(geschiedenis)}"
                 )
 
-            print("Analyse aanvragen bij Gemini...")
+            print("Analyse aanvragen...")
             response = None
-            max_pogingen = 5
-            wachttijd = 10
-            
-            for poging in range(max_pogingen):
+            for poging in range(5):
                 try:
                     response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
                     break
                 except Exception as api_e:
-                    if poging < max_pogingen - 1:
-                        print(f"Gemini server overbelast (503). Poging {poging + 1} mislukt. Slaap {wachttijd}s...")
-                        time.sleep(wachttijd)
-                        wachttijd *= 2
-                    else:
-                        raise api_e
+                    time.sleep(10 * (poging + 1))
 
             print("Mail verzenden...")
             msg = MIMEMultipart()
@@ -195,12 +163,8 @@ jobs:
             server.login(GMAIL_ADRES, GMAIL_APP_WACHTWOORD)
             server.sendmail(GMAIL_ADRES, EMAIL_ONTVANGER, msg.as_string())
             server.quit()
-
-            if MODUS == "auto_coach":
-                with open(last_id_file, "w") as f:
-                    f.write(str(nieuwste_id))
             
-            print("Succesvol afgerond!")
+            print("Klaar!")
 
         except Exception as e:
             print(f"Fout: {e}")
