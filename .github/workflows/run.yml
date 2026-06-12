@@ -34,9 +34,18 @@ jobs:
     - name: Hulpprogrammas installeren
       run: pip install garminconnect google-genai
 
-    - name: Script live opbouwen (Bulletproof Triple Quote Edition)
+    - name: Script live uitvoeren via Python Shell
+      shell: python
+      env:
+        GITHUB_EVENT_NAME: ${{ github.event_name }}
+        CHOSEN_MODUS: ${{ github.event.inputs.modus }}
+        GARMIN_EMAIL: ${{ secrets.GARMIN_EMAIL }}
+        GARMIN_WACHTWOORD: ${{ secrets.GARMIN_WACHTWOORD }}
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        GMAIL_ADRES: ${{ secrets.GMAIL_ADRES }}
+        GMAIL_APP_WACHTWOORD: ${{ secrets.GMAIL_APP_WACHTWOORD }}
+        EMAIL_ONTVANGER: ${{ secrets.EMAIL_ONTVANGER }}
       run: |
-        cat << 'EOF' > coach.py
         import os
         import json
         import time
@@ -63,7 +72,7 @@ jobs:
             MODUS = GEKOZEN_INPUT
 
         try:
-            print(f"Inloggen bij Garmin...")
+            print("Inloggen bij Garmin...")
             token_dir = os.path.expanduser("~/.garminconnect")
             os.makedirs(token_dir, exist_ok=True)
             
@@ -82,8 +91,8 @@ jobs:
             
             nu_be = datetime.utcnow() + timedelta(hours=2)
             
+            last_id_file = os.path.join(token_dir, "last_activity_id.txt")
             if MODUS == "auto_coach":
-                last_id_file = os.path.join(token_dir, "last_activity_id.txt")
                 if os.path.exists(last_id_file):
                     with open(last_id_file, "r") as f:
                         if str(f.read().strip()) == str(nieuwste_id):
@@ -125,7 +134,7 @@ jobs:
             client = genai.Client(api_key=GEMINI_API_KEY)
 
             if MODUS in ["auto_coach", "resterende_dagen"]:
-                subject = f"🚀 WIJTSCHAETE PREP: Jouw Anaerobe Schema"
+                subject = "🚀 WIJTSCHAETE PREP: Jouw Anaerobe Schema"
                 prompt = f"""Je bent een elite wielercoach. De renner heeft op zaterdag 11 juli 2026 de 'Wijtschaete koers' (kermiskoer).
 
 DOELSTELLING: De renner heeft een sterke motor (FTP/aeroob), maar is recent snel uit koers gereden omdat hij kraakte op de constante spurts en herlanceringen na de bochten (Repeated Sprint Ability / Anaerobe capaciteit schiet tekort). We gaan hem nu transformeren in een criterium-specialist.
@@ -149,7 +158,7 @@ OPENINGSQUOTE
 Data: {json.dumps(geschiedenis)}"""
 
             else:
-                subject = f"📊 KANSEN CHECKER: Wijtschaete koers (11 juli)"
+                subject = "📊 KANSEN CHECKER: Wijtschaete koers (11 juli)"
                 prompt = f"""Je bent een deskundige, nuchtere Belgische ploegleider. Evalueer de kansen van de renner (72kg) voor Wijtschaete koers op zaterdag 11 juli 2026.
 Onthoud dat zijn basismotor sterk is, maar dat de herlanceringen na de bocht zijn zwakke punt zijn, én dat hij van 1 t/m 5 juli volledig stilzit.
 
@@ -195,21 +204,12 @@ Data: {json.dumps(geschiedenis)}"""
             server.sendmail(GMAIL_ADRES, EMAIL_ONTVANGER, msg.as_string())
             server.quit()
             
+            if MODUS == "auto_coach":
+                with open(last_id_file, "w") as f:
+                    f.write(str(nieuwste_id))
+            
             print("Succesvol afgerond!")
 
         except Exception as e:
             print(f"Fout geconstateerd: {e}")
             exit(1)
-        EOF
-
-    - name: Script Uitvoeren
-      env:
-        GITHUB_EVENT_NAME: ${{ github.event_name }}
-        CHOSEN_MODUS: ${{ github.event.inputs.modus }}
-        GARMIN_EMAIL: ${{ secrets.GARMIN_EMAIL }}
-        GARMIN_WACHTWOORD: ${{ secrets.GARMIN_WACHTWOORD }}
-        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        GMAIL_ADRES: ${{ secrets.GMAIL_ADRES }}
-        GMAIL_APP_WACHTWOORD: ${{ secrets.GMAIL_APP_WACHTWOORD }}
-        EMAIL_ONTVANGER: ${{ secrets.EMAIL_ONTVANGER }}
-      run: python coach.py
