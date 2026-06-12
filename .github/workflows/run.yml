@@ -34,7 +34,7 @@ jobs:
     - name: Hulpprogrammas installeren
       run: pip install garminconnect google-genai
 
-    - name: Script live opbouwen (Focus: Wijtschaete & Crit Repeatability)
+    - name: Script live opbouwen (Bulletproof Triple Quote Edition)
       run: |
         cat << 'EOF' > coach.py
         import os
@@ -70,6 +70,7 @@ jobs:
             garmin = Garmin(GARMIN_EMAIL, GARMIN_WACHTWOORD)
             garmin.login(token_dir)
             
+            print("Wieleractiviteiten ophalen...")
             alle_activiteiten = garmin.get_activities(0, 10)
             if not alle_activiteiten:
                 print("Geen activiteiten gevonden.")
@@ -86,12 +87,12 @@ jobs:
                 if os.path.exists(last_id_file):
                     with open(last_id_file, "r") as f:
                         if str(f.read().strip()) == str(nieuwste_id):
-                            print("Al behandeld.")
+                            print("Activiteit al behandeld. We stoppen.")
                             exit(0)
                 
                 act_time = datetime.strptime(start_time_str, "%Y-%m-%d %H:%M:%S")
                 if nu_be - act_time > timedelta(minutes=90):
-                    print("Geen nieuwe rit.")
+                    print("Geen gloednieuwe activiteit gedetecteerd.")
                     exit(0)
 
             geschiedenis = []
@@ -108,48 +109,78 @@ jobs:
                     "Anaerobe Training Stress": act.get("anaerobicTrainingEffect")
                 })
 
+            # --- DYNAMISCHE DATUM- EN STATUSCONTROLE ---
             dagen = ["maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag", "zondag"]
             maanden = ["januari", "februari", "maart", "april", "mei", "juni", "juli", "augustus", "september", "oktober", "november", "december"]
             vandaag_voluit = f"{dagen[nu_be.weekday()]} {nu_be.day} {maanden[nu_be.month - 1]} {nu_be.year}"
+            
+            rit_datum_str = start_time_str.split(" ")[0]
+            vandaag_str = nu_be.strftime("%Y-%m-%d")
+            
+            if rit_datum_str == vandaag_str:
+                training_status = f"De renner heeft VANDAAG ({vandaag_voluit}) al getraind. De nieuwste rit staat in de data."
+            else:
+                training_status = f"De renner heeft vandaag ({vandaag_voluit}) nog NIET getraind. De meest recente rit is van gisteren of eerder ({start_time_str})."
 
             client = genai.Client(api_key=GEMINI_API_KEY)
 
             if MODUS in ["auto_coach", "resterende_dagen"]:
-                subject = f"🚀 WIJTSCHAETE PREP: Jouw Anaerobe Schema vanaf morgen"
-                prompt = (
-                    f"Je bent een elite wielercoach. De renner heeft op zaterdag 11 juli 2026 de 'Wijtschaete koers' (kermiskoer).\n"
-                    f"DOELSTELLING: De renner heeft een sterke motor (FTP/aeroob), maar is vandaag na 16km uit koers gereden omdat hij "
-                    "kraakte op de constante spurts/herlanceringen na de bochten (Repeated Sprint Ability / Anaerobe capaciteit tekort).\n"
-                    f"TIMING: Vandaag is exact {vandaag_voluit}. De renner kan van woensdag 1 juli t/m zondag 5 juli HELEMAAL NIET TRAINEN wegens vakantie/verplichtingen.\n\n"
-                    "STRIKTE RICHTLIJNEN VOOR JOUW TRAININGSVOORSTELLEN:\n"
-                    "1. BLOCK 1 (Nu t/m 30 juni): Rammen op anaerobe herhaalbaarheid. Schrijf loeiharde kermiskoer-simulaties voor (bijv. Tabata's, 30/30s, 40/20s, of 15-seconden full gas herlanceringen met korte rust).\n"
-                    "2. BLOCK 2 (1 juli t/m 5 juli): Schrijf GEEN trainingen voor. Vermeld dat dit een gedwongen de-load is voor supercompensatie.\n"
-                    "3. BLOCK 3 (6 juli t/m 10 juli): Re-activatie. Korte ritten met een paar vlijmscherpe prikkels om de spiertonus terug te halen na de inactiviteit.\n\n"
-                    "Structureer je mail ALTIJD met deze titels:\n"
-                    "OPENINGSQUOTE (Motiverend maar nuchter)\n"
-                    "1. DE DIAGNOSE VAN HET TEKORT (Waarom ging het vandaag mis?)\n"
-                    "2. JOUW SPECIFIEKE TARGET WORKOUT VOOR MORGEN (Geef exacte wattages/zones of gevoelstermijnen voor de sprints)\n"
-                    "3. DE ROUTE NAAR WIJTSCHAETE (Hoe we de juliblokkade tackelen)\n"
-                    f"Data: {json.dumps(geschiedenis)}"
-                )
+                subject = f"🚀 WIJTSCHAETE PREP: Jouw Anaerobe Schema"
+                prompt = f"""Je bent een elite wielercoach. De renner heeft op zaterdag 11 juli 2026 de 'Wijtschaete koers' (kermiskoer).
+
+DOELSTELLING: De renner heeft een sterke motor (FTP/aeroob), maar is recent snel uit koers gereden omdat hij kraakte op de constante spurts en herlanceringen na de bochten (Repeated Sprint Ability / Anaerobe capaciteit schiet tekort). We gaan hem nu transformeren in een criterium-specialist.
+
+TIMING & STATUS:
+- Vandaag is exact: {vandaag_voluit}
+- Status voor vandaag: {training_status}
+
+STRIKTE PERIODISERING (RECONCILIEER MET GEBLOKKEERDE DAGEN):
+1. BLOCK 1 (Nu t/m 30 juni): Rammen op anaerobe herhaalbaarheid. Schrijf loeiharde kermiskoer-simulaties voor (bijv. Tabata's, 30/30s, 40/20s, of 15-seconden maximale sprints vanuit lage snelheid om bochten te simuleren).
+2. BLOCK 2 (Woensdag 1 juli t/m zondag 5 juli): DE RENNER KAN NIET TRAINEN (Vakantie/Verplichtingen). Plan hier absoluut GEEN trainingen in. Noem dit expliciet een gedwongen de-load periode voor supercompensatie.
+3. BLOCK 3 (6 juli t/m 10 juli): Re-activatie. Korte, felle ritten met korte prikkels om de spiertonus bliksemsnel terug te halen voor de koers op zaterdag 11 juli.
+
+Structureer je e-mail EXACT met de volgende hoofdtitels in HOOFDLETTERS:
+OPENINGSQUOTE
+
+1. DE DIAGNOSE VAN HET TEKORT (ANALYSE LAATSTE RIT)
+2. JOUW SPECIFIEKE TARGET WORKOUT VOOR MORGEN (MET CONCRETE INTENSITEITEN)
+3. DE ROUTE NAAR WIJTSCHAETE (PERIODISERING EN STRATEGIE)
+
+Data: {json.dumps(geschiedenis)}"""
+
             else:
                 subject = f"📊 KANSEN CHECKER: Wijtschaete koers (11 juli)"
-                prompt = (
-                    f"Vandaag is exact {vandaag_voluit}. Analyseer de kansen van de renner (72kg) voor Wijtschaete op 11 juli.\n"
-                    "Neem mee dat hij een goede basismotor heeft maar moeite heeft met herlanceringen na de bocht, én 5 dagen stilzit begin juli.\n"
-                    "Geef een realistische procentuele kans op:\n"
-                    "- % Kans op actieve koers\n- % Kans op pelotonfinish\n- % Kans op vroege deconnexie\n"
-                    f"Data: {json.dumps(geschiedenis)}"
-                )
+                prompt = f"""Je bent een deskundige, nuchtere Belgische ploegleider. Evalueer de kansen van de renner (72kg) voor Wijtschaete koers op zaterdag 11 juli 2026.
+Onthoud dat zijn basismotor sterk is, maar dat de herlanceringen na de bocht zijn zwakke punt zijn, én dat hij van 1 t/m 5 juli volledig stilzit.
 
-            print("Analyse aanvragen...")
+Structureer je rapportage in de ik-vorm met deze titels in HOOFDLETTERS:
+DE RAUWE DIAGNOSE (HET RENNERSPROFIEL)
+REALISTISCH KOERSSCENARIO & KANSBEREKENING
+Geef procentuele kansen op:
+- % Kans op actieve koers (meeschuiven/aanvallen)
+- % Kans op pelotonfinish
+- % Kans op vroege deconnexie
+
+HET TACTISCHE GEVECHTSPLAN
+
+Data: {json.dumps(geschiedenis)}"""
+
+            print("Analyse aanvragen bij Gemini...")
             response = None
-            for poging in range(5):
+            max_pogingen = 5
+            wachttijd = 10
+            
+            for poging in range(max_pogingen):
                 try:
                     response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
                     break
                 except Exception as api_e:
-                    time.sleep(10 * (poging + 1))
+                    if poging < max_pogingen - 1:
+                        print(f"Gemini server busy. HTTP 503. Retry {poging + 1} in {wachttijd}s...")
+                        time.sleep(wachttijd)
+                        wachttijd *= 2
+                    else:
+                        raise api_e
 
             print("Mail verzenden...")
             msg = MIMEMultipart()
@@ -164,10 +195,10 @@ jobs:
             server.sendmail(GMAIL_ADRES, EMAIL_ONTVANGER, msg.as_string())
             server.quit()
             
-            print("Klaar!")
+            print("Succesvol afgerond!")
 
         except Exception as e:
-            print(f"Fout: {e}")
+            print(f"Fout geconstateerd: {e}")
             exit(1)
         EOF
 
