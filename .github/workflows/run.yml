@@ -31,7 +31,7 @@ jobs:
           garmin-tokens-
 
     - name: Installeer dependencies
-      run: pip install garminconnect google-generativeai
+      run: pip install garminconnect google-genai
 
     - name: Run Coach
       env:
