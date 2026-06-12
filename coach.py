@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from garminconnect import Garmin
-import google.generativeai as genai
+from google import genai
 
 # 1. Omgevingsvariabelen inladen
 GARMIN_EMAIL = os.environ.get("GARMIN_EMAIL")
@@ -60,9 +60,9 @@ try:
             sys.exit(0)
 
     # 5. Geschiedenis structureren
-    geschiedenis = []
+    content_geschiedenis = []
     for act in alle_activiteiten:
-        geschiedenis.append({
+        content_geschiedenis.append({
             "Naam": act.get("activityName"),
             "Type": act.get("activityType", {}).get("typeKey"),
             "Datum": act.get("startTimeLocal"),
@@ -85,18 +85,17 @@ try:
     if rit_datum_str == vandaag_str:
         training_status = f"De renner heeft VANDAAG ({vandaag_voluit}) al getraind. De nieuwste rit staat in de data."
     else:
-        training_status = f"De renner heeft vandaag ({vandaag_voluit}) noch NIET getraind. De meest recente rit is van gisteren of eerder ({start_time_str})."
+        training_status = f"De renner heeft vandaag ({vandaag_voluit}) nog NIET getraind. De meest recente rit is van gisteren of eerder ({start_time_str})."
 
-    # 7. Gemini AI Aanroepen
+    # 7. Gemini AI Aanroepen via de nieuwe GenAI Client
     print("[STAP 3] AI Analyse opstarten met Gemini...")
-    genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    client = genai.Client(api_key=GEMINI_API_KEY)
 
     if MODUS in ["auto_coach", "resterende_dagen"]:
         subject = "🚀 WIJTSCHAETE PREP: Jouw Anaerobe Schema"
         prompt = f"""Je bent een elite wielercoach. De renner heeft op zaterdag 11 juli 2026 de 'Wijtschaete koers' (kermiskoer).
 
-DOELSTELLING: De renner heeft een sterke motor (FTP/aeroob), maar is recent snel uit koers gereden omdat hij kraakte op de constante spurts en herlanceringen na de bochten (Repeated Sprint Ability / Anaerobe capaciteit schiet tekort). We gaan hem nu transformeren in een criterium-specialist.
+DOELSTELLING: De renner heeft een sterke motor (FTP/aeroob), maar is recent snel uit koers gereden omdat hij kraakte op de constante spurts i.v.m. herlanceringen na de bochten (Repeated Sprint Ability / Anaerobe capaciteit schiet tekort). We gaan hem nu transformeren in een criterium-specialist.
 
 TIMING & STATUS:
 - Vandaag is exact: {vandaag_voluit}
@@ -114,7 +113,7 @@ OPENINGSQUOTE
 2. JOUW SPECIFIEKE TARGET WORKOUT VOOR MORGEN (MET CONCRETE INTENSITEITEN)
 3. DE ROUTE NAAR WIJTSCHAETE (PERIODISERING EN STRATEGIE)
 
-Data: {json.dumps(geschiedenis)}"""
+Data: {json.dumps(content_geschiedenis)}"""
 
     else:
         subject = "📊 KANSEN CHECKER: Wijtschaete koers (11 juli)"
@@ -131,9 +130,13 @@ Geef procentuele kansen op:
 
 HET TACTISCHE GEVECHTSPLAN
 
-Data: {json.dumps(geschiedenis)}"""
+Data: {json.dumps(content_geschiedenis)}"""
 
-    response = model.generate_content(prompt)
+    # Genereren via de nieuwe 2.5-flash syntax
+    response = client.models.generate_content(
+        model='gemini-2.5-flash',
+        contents=prompt,
+    )
     ai_tekst = response.text
 
     # 8. E-mail Verzenden via SMTP
@@ -160,6 +163,6 @@ except Exception as e:
     print("\n" + "="*50)
     print("🚨 ER IS EEN CRITICAL ERROR OPGETREDEN 🚨")
     print("="*50)
-    traceback.print_exc()  # Dit print de exacte regelcode en foutmelding in je logs!
+    traceback.print_exc()
     print("="*50 + "\n")
     sys.exit(1)
