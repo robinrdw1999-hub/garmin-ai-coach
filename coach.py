@@ -20,6 +20,11 @@ EMAIL_ONTVANGER = os.environ.get("EMAIL_ONTVANGER")
 EVENT_NAME = os.environ.get("GITHUB_EVENT_NAME")
 GEKOZEN_INPUT = os.environ.get("CHOSEN_MODUS")
 
+# Feedback van de renner opvangen
+USER_FEEDBACK = os.environ.get("USER_FEEDBACK")
+if not USER_FEEDBACK or USER_FEEDBACK.strip() == "":
+    USER_FEEDBACK = "Geen extra opmerkingen van de renner voor deze run."
+
 MODUS = "auto_coach" if EVENT_NAME == "schedule" else GEKOZEN_INPUT
 
 try:
@@ -100,13 +105,17 @@ try:
 
 DOELSTELLING: De renner heeft een sterke motor (FTP/aeroob), maar is recent snel uit koers gereden omdat hij kraakte op de constante spurts i.v.m. herlanceringen na de bochten (Repeated Sprint Ability / Anaerobe capaciteit schiet tekort). We gaan hem nu transformeren in een criterium-specialist.
 
+⚠️ STRIKTE SUBJECTIEVE FEEDBACK VAN DE RENNER (GEEF HIER ABSOLUTE PRIORITEIT AAN):
+"{USER_FEEDBACK}"
+(Instructie voor de AI: Als de renner aangeeft overtraind/moe te zijn, schrijf dan direct actieve recuperatie of rust voor, ongeacht wat de periodisering zegt. Als de renner aangeeft dat zijn hartslagmeter defect is, negeer dan vreemde hartslagpieken of -dalen in de recente data en baseer je advies op gevoel/duur/afstand).
+
 REMAN OP DE RECENTE TRAINING: Let op, de renner kan ook loopsessies of alternatieve trainingen uitvoeren als cross-training. Neem dit mee in je analyse als actieve recuperatie of conditionele prikkel.
 
 TIMING & STATUS:
 - Vandaag is exact: {vandaag_voluit}
 - Status voor vandaag: {training_status}
 
-STRIKTE PERIODISERING (RECONCILIEER MET GEBLOKKEERDE DAGEN):
+STRIKTE PERIODISERING (RECONCILIEER MET GEBLOKKEERDE DAGEN EN DE FEEDBACK):
 1. BLOCK 1 (Nu t/m 30 juni): Rammen op anaerobe herhaalbaarheid. Schrijf loeiharde kermiskoer-simulaties voor (bijv. Tabata's, 30/30s, 40/20s, of 15-seconden maximale sprints vanuit lage snelheid om bochten te simuleren).
 2. BLOCK 2 (Woensdag 1 juli t/m zondag 5 juli): DE RENNER KAN NIET TRAINEN (Vakantie/Verplichtingen). Plan hier absoluut GEEN trainingen in. Noem dit expliciet een gedwongen de-load periode voor supercompensatie.
 3. BLOCK 3 (6 juli t/m 10 juli): Re-activatie. Korte, felle ritten met korte prikkels om de spiertonus bliksemsnel terug te halen voor de koers op zaterdag 11 juli.
@@ -114,7 +123,7 @@ STRIKTE PERIODISERING (RECONCILIEER MET GEBLOKKEERDE DAGEN):
 Structureer je e-mail EXACT met de volgende hoofdtitels in HOOFDLETTERS:
 OPENINGSQUOTE
 
-1. DE DIAGNOSE VAN HET TEKORT (ANALYSE LAATSTE TRAINING)
+1. DE DIAGNOSE VAN HET TEKORT (ANALYSE LAATSTE TRAINING & JOUW FEEDBACK)
 2. JOUW SPECIFIEKE TARGET WORKOUT VOOR MORGEN (MET CONCRETE INTENSITEITEN)
 3. DE ROUTE NAAR WIJTSCHAETE (PERIODISERING EN STRATEGIE)
 
@@ -123,7 +132,10 @@ Data: {json.dumps(content_geschiedenis)}"""
     else:
         subject = "📊 KANSEN CHECKER: Wijtschaete koers (11 juli)"
         prompt = f"""Je bent een deskundige, nuchtere Belgische ploegleider. Evalueer de kansen van de renner (72kg) voor Wijtschaete koers op zaterdag 11 juli 2026.
-Onthoud dat zijn basismotor sterk is, maar dat de herlanceringen na de bocht zijn zwakke punt zijn, én dat hij van 1 t/m 5 juli volledig stilzit. Houd ook rekening met eventuele loopsessies als alternatieve trainingsvorm.
+Onthoud dat zijn basismotor sterk is, maar dat de herlanceringen na de bocht zijn zwakke punt zijn, én dat hij van 1 t/m 5 juli volledig stilzit.
+
+⚠️ RECENTE OPMERKING VAN DE RENNER:
+"{USER_FEEDBACK}"
 
 Structureer je rapportage in de ik-vorm met deze titels in HOOFDLETTERS:
 DE RAUWE DIAGNOSE (HET RENNERSPROFIEL)
@@ -137,12 +149,35 @@ HET TACTISCHE GEVECHTSPLAN
 
 Data: {json.dumps(content_geschiedenis)}"""
 
-    # Genereren via de nieuwe 2.5-flash syntax
-    response = client.models.generate_content(
-        model='gemini-2.5-flash',
-        contents=prompt,
-    )
-    ai_tekst = response.text
+    # Genereren met robuuste retry-logica en fallback-model tegen serverdrukte
+    ai_tekst = None
+    modellen_om_te_proberen = ['gemini-2.5-flash', 'gemini-1.5-flash']
+    
+    for model_naam in modellen_om_te_proberen:
+        if ai_tekst:
+            break
+        for poging in range(3):
+            try:
+                print(f"Aanroepen van {model_naam} (Poging {poging + 1}/3)...")
+                response = client.models.generate_content(
+                    model=model_naam,
+                    contents=prompt,
+                )
+                ai_tekst = response.text
+                if ai_tekst:
+                    print(f"[SUCCES] Generatie geslaagd met {model_naam}!")
+                    break
+            except Exception as e:
+                fout_str = str(e).lower()
+                if "503" in fout_str or "unavailable" in fout_str or "high demand" in fout_str:
+                    print(f"Google geeft aan dat {model_naam} overbelast is. Even geduld...")
+                    if poging < 2:
+                        time.sleep(10)
+                else:
+                    raise e
+
+    if not ai_tekst:
+        raise Exception("Gemini kon niet worden bereikt na meerdere pogingen wegens extreme drukte bij Google.")
 
     # 8. E-mail Verzenden via SMTP
     print("[STAP 4] Rapportage mailen naar de renner...")
