@@ -32,7 +32,7 @@ try:
     garmin.login(token_dir)
     
     # 3. Data ophalen
-    print("[STAP 2] Wieleractiviteiten ophalen...")
+    print("[STAP 2] Activiteiten ophalen...")
     alle_activiteiten = garmin.get_activities(0, 10)
     if not alle_activiteiten:
         print("Geen activiteiten gevonden in dit Garmin account.")
@@ -45,6 +45,10 @@ try:
     # Tijdzone-correctie (BE/NL tijd)
     nu_be = datetime.utcnow() + timedelta(hours=2)
     
+    # Maak de datumpersing robuust voor zowel 'YYYY-MM-DD HH:MM:SS' als 'YYYY-MM-DDTHH:MM:SS.0'
+    clean_time_str = start_time_str[:19].replace("T", " ")
+    act_time = datetime.strptime(clean_time_str, "%Y-%m-%d %H:%M:%S")
+    
     # 4. Wijzigings- en tijdcontrole voor automatische ritten
     last_id_file = os.path.join(token_dir, "last_activity_id.txt")
     if MODUS == "auto_coach":
@@ -54,7 +58,6 @@ try:
                     print("Activiteit al eerder geanalyseerd. We stoppen om spam te voorkomen.")
                     sys.exit(0)
         
-        act_time = datetime.strptime(start_time_str, "%Y-%m-%d %H:%M:%S")
         if nu_be - act_time > timedelta(minutes=90):
             print("Nieuwste activiteit is ouder dan 90 minuten. Geen actie vereist.")
             sys.exit(0)
@@ -79,13 +82,13 @@ try:
     maanden = ["januari", "februari", "maart", "april", "mei", "juni", "juli", "augustus", "september", "oktober", "november", "december"]
     vandaag_voluit = f"{dagen[nu_be.weekday()]} {nu_be.day} {maanden[nu_be.month - 1]} {nu_be.year}"
     
-    rit_datum_str = start_time_str.split(" ")[0]
+    rit_datum_str = start_time_str[:10]
     vandaag_str = nu_be.strftime("%Y-%m-%d")
     
     if rit_datum_str == vandaag_str:
-        training_status = f"De renner heeft VANDAAG ({vandaag_voluit}) al getraind. De nieuwste rit staat in de data."
+        training_status = f"De renner heeft VANDAAG ({vandaag_voluit}) al getraind. De nieuwste sessie staat in de data."
     else:
-        training_status = f"De renner heeft vandaag ({vandaag_voluit}) nog NIET getraind. De meest recente rit is van gisteren of eerder ({start_time_str})."
+        training_status = f"De renner heeft vandaag ({vandaag_voluit}) nog NIET getraind. De meest recente sessie is van gisteren of eerder ({start_time_str})."
 
     # 7. Gemini AI Aanroepen via de nieuwe GenAI Client
     print("[STAP 3] AI Analyse opstarten met Gemini...")
@@ -96,6 +99,8 @@ try:
         prompt = f"""Je bent een elite wielercoach. De renner heeft op zaterdag 11 juli 2026 de 'Wijtschaete koers' (kermiskoer).
 
 DOELSTELLING: De renner heeft een sterke motor (FTP/aeroob), maar is recent snel uit koers gereden omdat hij kraakte op de constante spurts i.v.m. herlanceringen na de bochten (Repeated Sprint Ability / Anaerobe capaciteit schiet tekort). We gaan hem nu transformeren in een criterium-specialist.
+
+REMAN OP DE RECENTE TRAINING: Let op, de renner kan ook loopsessies of alternatieve trainingen uitvoeren als cross-training. Neem dit mee in je analyse als actieve recuperatie of conditionele prikkel.
 
 TIMING & STATUS:
 - Vandaag is exact: {vandaag_voluit}
@@ -109,7 +114,7 @@ STRIKTE PERIODISERING (RECONCILIEER MET GEBLOKKEERDE DAGEN):
 Structureer je e-mail EXACT met de volgende hoofdtitels in HOOFDLETTERS:
 OPENINGSQUOTE
 
-1. DE DIAGNOSE VAN HET TEKORT (ANALYSE LAATSTE RIT)
+1. DE DIAGNOSE VAN HET TEKORT (ANALYSE LAATSTE TRAINING)
 2. JOUW SPECIFIEKE TARGET WORKOUT VOOR MORGEN (MET CONCRETE INTENSITEITEN)
 3. DE ROUTE NAAR WIJTSCHAETE (PERIODISERING EN STRATEGIE)
 
@@ -118,7 +123,7 @@ Data: {json.dumps(content_geschiedenis)}"""
     else:
         subject = "📊 KANSEN CHECKER: Wijtschaete koers (11 juli)"
         prompt = f"""Je bent een deskundige, nuchtere Belgische ploegleider. Evalueer de kansen van de renner (72kg) voor Wijtschaete koers op zaterdag 11 juli 2026.
-Onthoud dat zijn basismotor sterk is, maar dat de herlanceringen na de bocht zijn zwakke punt zijn, én dat hij van 1 t/m 5 juli volledig stilzit.
+Onthoud dat zijn basismotor sterk is, maar dat de herlanceringen na de bocht zijn zwakke punt zijn, én dat hij van 1 t/m 5 juli volledig stilzit. Houd ook rekening met eventuele loopsessies als alternatieve trainingsvorm.
 
 Structureer je rapportage in de ik-vorm met deze titels in HOOFDLETTERS:
 DE RAUWE DIAGNOSE (HET RENNERSPROFIEL)
