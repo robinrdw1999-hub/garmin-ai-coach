@@ -1,20 +1,25 @@
-name: Dagelijkse Garmin AI Coach
+name: Dagelijkse Garmin AI Triatlon Coach
 
 on:
   schedule:
-    - cron: '*/15 * * * *'
+    - cron: '0 6 * * *' # Draait nu automatisch elke ochtend om 06:00
   workflow_dispatch:
     inputs:
       modus:
         description: 'Analyse type'
         required: true
-        default: 'resterende_dagen'
+        default: 'week_schema'
         type: choice
-        options: ['resterende_dagen', 'koers_kansen_checker']
+        options: ['week_schema', 'triatlon_kansen_checker']
       feedback:
-        description: 'Jouw feedback (bijv. "Ik voel me overtraind" of "Hartslagmeter defect")'
+        description: 'Jouw feedback (hoe voel je je, specifieke pijntjes, workout feedback)'
         required: false
-        default: 'Geen extra opmerkingen.'
+        default: 'Ik voel me fit en klaar voor de triatlonprikkels.'
+        type: string
+      weer:
+        description: 'Weersvoorspelling voor de komende dagen'
+        required: false
+        default: 'Typisch Belgisch zomerweer, rond de 21-24 graden met kans op een bui.'
         type: string
 
 jobs:
@@ -43,6 +48,7 @@ jobs:
         GITHUB_EVENT_NAME: ${{ github.event_name }}
         CHOSEN_MODUS: ${{ github.event.inputs.modus }}
         USER_FEEDBACK: ${{ github.event.inputs.feedback }}
+        WEATHER_FORECAST: ${{ github.event.inputs.weer }}
         GARMIN_EMAIL: ${{ secrets.GARMIN_EMAIL }}
         GARMIN_WACHTWOORD: ${{ secrets.GARMIN_WACHTWOORD }}
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
