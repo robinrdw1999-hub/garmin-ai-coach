@@ -14,9 +14,8 @@ on:
         options:
           - dagadvies
           - week_schema
-          - workout_feedback
           - race_readiness
-          - herstel_check
+          - conditie_evolutie
 
       feedback:
         description: 'Subjectieve feedback: vermoeidheid, pijn, benen, motivatie, slaapgevoel'
@@ -28,6 +27,48 @@ on:
         description: 'Extra context, bijvoorbeeld weinig tijd, materiaal, avondwedstrijd of reisdag'
         required: false
         default: ''
+        type: string
+
+      analyseperiode_dagen:
+        description: 'Aantal dagen voor conditieanalyse'
+        required: false
+        default: '90'
+        type: string
+
+      powerdata:
+        description: 'Powerdata beschikbaar? ja, nee of soms'
+        required: false
+        default: 'soms'
+        type: string
+
+      ftp:
+        description: 'FTP in watt, of onbekend'
+        required: false
+        default: 'onbekend'
+        type: string
+
+      max_hr:
+        description: 'Maximale hartslag, of onbekend'
+        required: false
+        default: 'onbekend'
+        type: string
+
+      rust_hr:
+        description: 'Rusthartslag, of onbekend'
+        required: false
+        default: 'onbekend'
+        type: string
+
+      gewicht:
+        description: 'Gewicht in kg'
+        required: false
+        default: '72'
+        type: string
+
+      focus_conditieanalyse:
+        description: 'Focus van conditieanalyse'
+        required: false
+        default: 'wielervorm, koerspunch en herstel'
         type: string
 
 jobs:
@@ -58,6 +99,14 @@ jobs:
           CHOSEN_MODUS: ${{ github.event.inputs.modus }}
           USER_FEEDBACK: ${{ github.event.inputs.feedback }}
           EXTRA_CONTEXT: ${{ github.event.inputs.extra_context }}
+
+          ANALYSEPERIODE_DAGEN: ${{ github.event.inputs.analyseperiode_dagen }}
+          POWERDATA: ${{ github.event.inputs.powerdata }}
+          FTP: ${{ github.event.inputs.ftp }}
+          MAX_HR: ${{ github.event.inputs.max_hr }}
+          RUST_HR: ${{ github.event.inputs.rust_hr }}
+          GEWICHT: ${{ github.event.inputs.gewicht }}
+          FOCUS_CONDITIEANALYSE: ${{ github.event.inputs.focus_conditieanalyse }}
 
           GARMIN_EMAIL: ${{ secrets.GARMIN_EMAIL }}
           GARMIN_WACHTWOORD: ${{ secrets.GARMIN_WACHTWOORD }}
