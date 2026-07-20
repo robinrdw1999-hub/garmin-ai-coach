@@ -39,7 +39,7 @@ WEATHER_LON = 4.10
 ATHLETE_PROFILE = {
     "focus": "optimale vorm voor wielerwedstrijden",
     "triathlon_priority": "Triatlon Donkmeer is puur voor het plezier en mag de wielervorm niet hypothekeren.",
-    "style": "nuchter, conservatief, concreet, geen heroische taal",
+    "tone": "nuchter, menselijk, direct en licht coachend",
     "max_main_sessions_per_day": 1
 }
 
@@ -689,7 +689,7 @@ def determine_recovery_risk(summary, sleep_info, user_feedback):
     for word in pain_words:
         if word in lower_feedback:
             risk_score += 3
-            reasons.append("Subjectieve feedback bevat pijn, vermoeidheid of ziekte-indicatie.")
+            reasons.append("Je feedback bevat een signaal rond pijn, ziekte of duidelijke vermoeidheid.")
             break
 
     if sleep_info.get("score") is not None:
@@ -697,16 +697,18 @@ def determine_recovery_risk(summary, sleep_info, user_feedback):
 
         if score < 60:
             risk_score += 3
-            reasons.append(f"Slaapscore is zeer laag: {score}/100.")
+            reasons.append(f"Je slaapscore is zeer laag: {score}/100.")
         elif score < 70:
             risk_score += 2
-            reasons.append(f"Slaapscore is laag: {score}/100.")
+            reasons.append(f"Je slaapscore is laag: {score}/100.")
         elif score < 78:
             risk_score += 1
-            reasons.append(f"Slaapscore is matig: {score}/100.")
+            reasons.append(f"Je slaapscore is matig: {score}/100.")
+        else:
+            reasons.append(f"Je slaapscore is bruikbaar tot goed: {score}/100.")
     else:
         risk_score += 1
-        reasons.append("Slaapscore ontbreekt; geen positieve herstelconclusie trekken.")
+        reasons.append("De slaapscore ontbreekt, dus de coach trekt geen positieve herstelconclusie.")
 
     last_7 = summary.get("last_7_days", {})
     hard_sessions = safe_int(last_7.get("hard_sessions"))
@@ -715,21 +717,27 @@ def determine_recovery_risk(summary, sleep_info, user_feedback):
 
     if hard_sessions >= 3:
         risk_score += 2
-        reasons.append(f"Veel intensieve sessies in de laatste 7 dagen: {hard_sessions}.")
+        reasons.append(f"Er staan veel intensieve sessies in de laatste 7 dagen: {hard_sessions}.")
     elif hard_sessions == 2:
         risk_score += 1
-        reasons.append("Twee intensieve sessies in de laatste 7 dagen.")
+        reasons.append("Er staan twee intensieve sessies in de laatste 7 dagen.")
+    else:
+        reasons.append(f"Het aantal intensieve sessies in de laatste 7 dagen is beperkt: {hard_sessions}.")
 
     if rest_days is not None and rest_days <= 1:
         risk_score += 1
-        reasons.append("Weinig rustdagen in de laatste 7 dagen.")
+        reasons.append("Er waren weinig rustdagen in de laatste 7 dagen.")
+    elif rest_days is not None:
+        reasons.append(f"Geschat aantal rustdagen in de laatste 7 dagen: {rest_days}.")
 
     if total_h >= 10:
         risk_score += 2
-        reasons.append(f"Hoog totaalvolume laatste 7 dagen: {total_h} uur.")
+        reasons.append(f"Het totaalvolume van de laatste 7 dagen is hoog: {total_h} uur.")
     elif total_h >= 7:
         risk_score += 1
-        reasons.append(f"Matig tot hoog totaalvolume laatste 7 dagen: {total_h} uur.")
+        reasons.append(f"Het totaalvolume van de laatste 7 dagen is matig tot hoog: {total_h} uur.")
+    else:
+        reasons.append(f"Het totaalvolume van de laatste 7 dagen blijft beheersbaar: {total_h} uur.")
 
     if risk_score >= 5:
         level = "hoog"
@@ -800,7 +808,8 @@ def build_coach_context(summary, sleep_info, weather, phase, races, recovery):
             "Geen zware looptrainingen in de aanloop naar de wielerwedstrijden.",
             "Bij ontbrekende data expliciet zeggen dat de data ontbreekt.",
             "Advies moet concreet en uitvoerbaar zijn.",
-            "Geen heroische taal, geen overdreven motivatie."
+            "Geen heroische taal, geen overdreven motivatie.",
+            "Leg altijd kort uit waarom het recovery risk level laag, medium of hoog is."
         ]
     }
 
@@ -835,15 +844,25 @@ Focus op fietsontwikkeling en frisheid richting de wielerwedstrijden.
 """
 
     prompt = f"""
-Je bent een nuchtere, conservatieve wielercoach met basiskennis triatlon.
-Je atleet wil optimaal presteren in de wielerwedstrijden in augustus 2026.
+Je bent een nuchtere, ervaren wielercoach met basiskennis triatlon.
+Je schrijft alsof je jouw atleet kort en duidelijk coacht via mail.
+Gebruik gewone coachtaal, geen rapporttaal.
+
+De atleet wil optimaal presteren in de wielerwedstrijden in augustus 2026.
 De triatlon op 1 augustus is puur voor het plezier en mag de wielervorm niet schaden.
 
+Toon:
+- menselijk
+- direct
+- kort coachend
+- concreet
+- licht motiverend
+- geen clichés
+- geen heroische taal
+- geen overdreven peptalk
+- geen medische claims
+
 Belangrijk:
-- Wees concreet.
-- Geen heroische taal.
-- Geen overdreven motivatie.
-- Geen medisch advies.
 - Bij twijfel kies je herstel of lagere intensiteit.
 - Adviseer nooit zwaarder dan de recovery boundaries toestaan.
 - Maximaal een hoofdtraining per dag.
@@ -855,29 +874,59 @@ Belangrijk:
   3. Atomse Pijl Denderhoutem: B/funwedstrijd
   4. Triatlon Donkmeer: C/plezierwedstrijd
 
-OUTPUTSTRUCTUUR IN HOOFDLETTERS:
+Vermijd droge formuleringen zoals:
+- op basis van de beschikbare data
+- hieruit kan geconcludeerd worden
+- de belasting suggereert
 
-STATUS
-- 3 tot 6 bullets over slaap, belasting, weer, fase en eerstvolgende wedstrijd.
+Gebruik liever coachtaal zoals:
+- je hebt genoeg belasting staan
+- vandaag niet bewijzen dat je fit bent
+- een korte prikkel is genoeg
+- frisheid is vandaag belangrijker dan volume
+- geen extra loopje toevoegen
+- niet van deze sessie een test maken
 
-ADVIES VANDAAG
-- Exacte training of rust.
-- Duur.
-- Intensiteit.
-- Waarop letten.
-- Wanneer afbreken.
+OUTPUTSTRUCTUUR:
 
-WAAROM DIT ADVIES
-- Korte onderbouwing op basis van data.
+COACH TAKE
+Een korte alinea van 2 tot 4 zinnen. Menselijk, direct en bruikbaar.
+Zeg meteen wat vandaag de bedoeling is.
+
+TYPE DAG
+Kies 1 label:
+- Rustdag
+- Hersteldag
+- Duurdag
+- Koersprikkel
+- Openers
+- Race day
+- Evaluatiedag
+
+HERSTELSTATUS
+- Recovery risk: laag, medium of hoog
+- Geef 2 tot 4 concrete redenen waarom dit level geldt.
+- Gebruik de redenen uit de context. Verzin niets bij.
+
+VANDAAG
+- Exacte training of rust
+- Duur
+- Intensiteit
+- Concrete uitvoering in stappen
+- Wanneer afbreken of afschalen
+
+WAAROM
+Leg kort uit waarom deze training vandaag logisch is richting de wielerwedstrijden.
 
 MORGEN
-- Target workout of hersteladvies.
+Geef een target voor morgen. Hou het kort.
 
 NIET DOEN
-- 2 tot 4 duidelijke zaken die vandaag vermeden moeten worden.
+Geef 2 tot 4 concrete dingen die vandaag niet slim zijn.
+Maak dit praktisch, niet generiek.
 
 WEDSTRIJDFOCUS
-- Een korte link met de komende wielerwedstrijden.
+Leg in 2 tot 4 zinnen de link met Haasdonk, Sombeke, Atomse Pijl Denderhoutem en Triatlon Donkmeer.
 
 Specifieke opdracht voor deze run:
 {output_instruction}
@@ -1036,16 +1085,25 @@ def main():
 
     ai_text = call_gemini(prompt)
 
+    recovery_reasons = recovery.get("reasons", [])
+    recovery_reasons_text = ""
+
+    for reason in recovery_reasons:
+        recovery_reasons_text += f"- {reason}\n"
+
     technical_footer = f"""
 
 --
-DATAKWALITEIT
+KORTE DATA-CHECK
 Slaapstatus: {sleep_info.get("status")}
 Slaapdatum: {sleep_info.get("date")}
 Slaapscore: {sleep_info.get("score")}
-Slaapnota: {sleep_info.get("note")}
-Weerbron: {weather.get("source")} - {weather.get("status")}
 Recovery risk: {recovery.get("level")} ({recovery.get("score")})
+
+Waarom dit recovery risk level:
+{recovery_reasons_text.strip()}
+
+Weerbron: {weather.get("source")} - {weather.get("status")}
 Modus: {MODUS}
 Garmin activiteiten geladen: {summary.get("data_quality", {}).get("activities_loaded")}
 Activiteiten met hartslag: {summary.get("data_quality", {}).get("activities_with_hr")}
