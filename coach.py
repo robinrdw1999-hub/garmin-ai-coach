@@ -1,826 +1,766 @@
 import os
 import json
-im*ort time
+import time
 import smtplib
-import sys*import traceback
-import urllib.req*est
+import sys
+import traceback
+import urllib.request
 import urllib.parse
-from datet*me import datetime, timedelta, dat*
+from datetime import datetime, timedelta, date
 from zoneinfo import ZoneInfo
-fro* email.mime.text import MIMEText
-f*om email.mime.multipart import MIM*Multipart
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
-from garminconnect impo*t Garmin
+from garminconnect import Garmin
 from google import genai
-*try:
-    from groq import Groq
-exc*pt Exception:
-    Groq = None
 
 
-# *==================================*========================
-# 1. CONF*G
-# ==============================*=============================
+TIMEZONE = ZoneInfo("Europe/Brussels")
 
-TIM*ZONE = ZoneInfo("Europe/Brussels")*
-GARMIN_EMAIL = os.environ.get("GA*MIN_EMAIL")
-GARMIN_WACHTWOORD = os*environ.get("GARMIN_WACHTWOORD")
+GARMIN_EMAIL = os.environ.get("GARMIN_EMAIL")
+GARMIN_WACHTWOORD = os.environ.get("GARMIN_WACHTWOORD")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-*EMINI_API_KEY = os.environ.get("GE*INI_API_KEY")
-GROQ_API_KEY = os.en*iron.get("GROQ_API_KEY")
+GMAIL_ADRES = os.environ.get("GMAIL_ADRES")
+GMAIL_APP_WACHTWOORD = os.environ.get("GMAIL_APP_WACHTWOORD")
+EMAIL_ONTVANGER = os.environ.get("EMAIL_ONTVANGER")
 
-GMAIL_AD*ES = os.environ.get("GMAIL_ADRES")*GMAIL_APP_WACHTWOORD = os.environ.*et("GMAIL_APP_WACHTWOORD")
-EMAIL_O*TVANGER = os.environ.get("EMAIL_ON*VANGER")
+EVENT_NAME = os.environ.get("GITHUB_EVENT_NAME", "manual")
+GEKOZEN_MODUS = os.environ.get("CHOSEN_MODUS") or "dagadvies"
 
-EVENT_NAME = os.environ.*et("GITHUB_EVENT_NAME", "manual")
-*EKOZEN_MODUS = os.environ.get("CHO*EN_MODUS") or "dagadvies"
+USER_FEEDBACK = os.environ.get("USER_FEEDBACK") or "Geen actuele subjectieve feedback opgegeven."
+EXTRA_CONTEXT = os.environ.get("EXTRA_CONTEXT") or ""
 
-USER_FE*DBACK = os.environ.get("USER_FEEDB*CK") or "Geen actuele subjectieve *eedback opgegeven."
-EXTRA_CONTEXT * os.environ.get("EXTRA_CONTEXT") o* ""
+MODUS = "dagadvies" if EVENT_NAME == "schedule" else GEKOZEN_MODUS
 
-MODUS = "dagadvies" if EVENT_*AME == "schedule" else GEKOZEN_MOD*S
-
-# Locatie bij benadering voor D*ndermonde/Berlare-regio.
-# Pas aan*indien gewenst.
-WEATHER_LAT = 51.0*
+WEATHER_LAT = 51.03
 WEATHER_LON = 4.10
 
-ATHLETE_PROFI*E = {
-    "focus": "optimale vorm *oor wielerwedstrijden",
-    "triat*lon_priority": "Triatlon Donkmeer *s puur voor het plezier en mag de *ielervorm niet hypothekeren.",
-   *"style": "nuchter, conservatief, c*ncreet, geen heroische taal",
-    *max_main_sessions_per_day": 1
+ATHLETE_PROFILE = {
+    "focus": "optimale vorm voor wielerwedstrijden",
+    "triathlon_priority": "Triatlon Donkmeer is puur voor het plezier en mag de wielervorm niet hypothekeren.",
+    "style": "nuchter, conservatief, concreet, geen heroische taal",
+    "max_main_sessions_per_day": 1
 }
 
-R*CES = [
+RACES = [
     {
-        "date": "202*-08-01",
-        "name": "Triatlon*Donkmeer",
-        "type": "triath*on_fun",
+        "date": "2026-08-01",
+        "name": "Triatlon Donkmeer",
+        "type": "triathlon_fun",
         "priority": "C",
-*       "note": "Plezierwedstrijd. *iet pieken. Geen agressieve taper.*Geen onnodige loopbelasting vooraf*"
+        "note": "Plezierwedstrijd. Niet pieken. Geen agressieve taper. Geen onnodige loopbelasting vooraf."
     },
     {
-        "date": "20*6-08-16",
-        "name": "Wielerw*dstrijd Haasdonk",
-        "type":*"cycling_race",
-        "priority"* "A",
-        "note": "Eerste hoof*doel. Frisheid, koershardheid en p*nch zijn prioritair."
-    },
-    {*        "date": "2026-08-22",
-    *   "name": "Wielerwedstrijd Sombek*",
-        "type": "cycling_race",*        "priority": "A",
-        "*ote": "Tweede hoofddoel. Vorm onde*houden, niet opnieuw zware opbouw *tarten."
+        "date": "2026-08-16",
+        "name": "Wielerwedstrijd Haasdonk",
+        "type": "cycling_race",
+        "priority": "A",
+        "note": "Eerste hoofddoel. Frisheid, koershardheid en punch zijn prioritair."
     },
     {
-        "dat*": "2026-08-28",
-        "name": "*tomse Pijl Denderhoutem",
-        *type": "cycling_fun_race",
-       *"priority": "B",
-        "note": "*unwedstrijd Cycling Vlaanderen. Ko*rsgericht rijden, maar niet behand*len als hoofdpiek. Ideaal als sche*pe prikkel na Haasdonk en Sombeke.*
+        "date": "2026-08-22",
+        "name": "Wielerwedstrijd Sombeke",
+        "type": "cycling_race",
+        "priority": "A",
+        "note": "Tweede hoofddoel. Vorm onderhouden, niet opnieuw zware opbouw starten."
+    },
+    {
+        "date": "2026-08-28",
+        "name": "Atomse Pijl Denderhoutem",
+        "type": "cycling_fun_race",
+        "priority": "B",
+        "note": "Funwedstrijd Cycling Vlaanderen. Koersgericht rijden, maar niet behandelen als hoofdpiek."
     }
 ]
 
 
-# =====================*==================================*===
-# 2. BASISHELPERS
-# ==========*==================================*==============
-
-def require_env(na*e, value):
+def require_env(name, value):
     if not value:
-     *  raise Exception(f"Ontbrekende en*ironment variable of secret: {name*")
+        raise Exception(f"Ontbrekende environment variable of secret: {name}")
 
 
 def now_be():
-    return date*ime.now(TIMEZONE)
+    return datetime.now(TIMEZONE)
 
 
-def parse_garm*n_datetime(value):
-    if not valu*:
-        return None
-
-    cleaned*= str(value)[:19].replace("T", " "*
-
+def safe_float(value, default=0.0):
     try:
-        return datetime*strptime(cleaned, "%Y-%m-%d %H:%M:*S").replace(tzinfo=TIMEZONE)
-    e*cept Exception:
-        return Non*
-
-
-def safe_float(value, default=0*0):
-    try:
-        if value is N*ne:
-            return default
-   *    return float(value)
-    except*Exception:
-        return default
-*
-def safe_int(value, default=0):
- *  try:
         if value is None:
- *          return default
-        r*turn int(value)
-    except Excepti*n:
+            return default
+        return float(value)
+    except Exception:
         return default
 
 
-def fo*mat_duration(seconds):
-    seconds*= safe_float(seconds)
-    hours = *nt(seconds // 3600)
-    minutes = *nt((seconds % 3600) // 60)
+def safe_int(value, default=0):
+    try:
+        if value is None:
+            return default
+        return int(value)
+    except Exception:
+        return default
 
-    if*hours > 0:
-        return f"{hours*u{minutes:02d}"
 
-    return f"{min*tes} min"
+def format_duration(seconds):
+    seconds = safe_float(seconds)
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+
+    if hours > 0:
+        return f"{hours}u{minutes:02d}"
+
+    return f"{minutes} min"
 
 
 def km(meters):
-    re*urn round(safe_float(meters) / 100*, 1)
+    return round(safe_float(meters) / 1000, 1)
 
 
-def recursive_find(data, ke*s):
-    """
-    Robuust zoeken naa* mogelijke slaapvelden in geneste *armin-dicts/lijsten.
-    """
-    i* isinstance(data, dict):
-        f*r key in keys:
-            if key *n data and data[key] is not None:
-*               return data[key]
+def parse_garmin_datetime(value):
+    if not value:
+        return None
 
- *      for value in data.values():
-*           found = recursive_find(*alue, keys)
-            if found i* not None:
-                return *ound
+    cleaned = str(value)[:19].replace("T", " ")
 
-    elif isinstance(data, li*t):
+    try:
+        return datetime.strptime(cleaned, "%Y-%m-%d %H:%M:%S").replace(tzinfo=TIMEZONE)
+    except Exception:
+        return None
+
+
+def recursive_find(data, keys):
+    if isinstance(data, dict):
+        for key in keys:
+            if key in data and data[key] is not None:
+                return data[key]
+
+        for value in data.values():
+            found = recursive_find(value, keys)
+            if found is not None:
+                return found
+
+    if isinstance(data, list):
         for item in data:
-    *       found = recursive_find(item* keys)
-            if found is not*None:
-                return found*
+            found = recursive_find(item, keys)
+            if found is not None:
+                return found
+
     return None
 
 
-# =============*==================================*===========
-# 3. GARMIN-DATA
-# ===*==================================*=====================
+def classify_activity_type(type_key):
+    if not type_key:
+        return "other"
 
-def classif*_activity_type(type_key):
-    if n*t type_key:
-        return "other"*
     t = str(type_key).lower()
 
-  * running = [
-        "running",
-  *     "street_running",
-        "tr*il_running",
-        "track_runnin*",
-        "treadmill_running",
-  *     "indoor_running"
-    ]
-
-    c*cling = [
-        "cycling",
-     *  "road_biking",
-        "gravel_c*cling",
-        "mountain_biking",*        "indoor_cycling",
-        *virtual_ride",
-        "bmx",
-    *   "cyclocross"
-    ]
-
-    swimmin* = [
-        "lap_swimming",
-     *  "open_water_swimming",
-        "*wimming"
-    ]
-
-    strength = [
- *      "strength_training",
-       *"cardio",
-        "hiit",
-        *pilates",
-        "yoga"
-    ]
-
-  * if t in running or "running" in t*
+    if "run" in t:
         return "run"
 
-    if t in*cycling or "cycling" in t or "biki*g" in t or "ride" in t:
-        re*urn "bike"
+    if "cycling" in t or "biking" in t or "ride" in t or "bike" in t:
+        return "bike"
 
-    if t in swimming o* "swim" in t:
-        return "swim*
+    if "swim" in t:
+        return "swim"
 
-    if t in strength:
-        re*urn "strength"
+    if "strength" in t or "hiit" in t or "cardio" in t:
+        return "strength"
 
-    return "other"*
+    return "other"
+
 
 def is_hard_session(activity):
- *  """
-    Benadering op basis van *armin Training Effect en gemiddeld* hartslag.
-    Dit is geen medisch* logica, enkel een trainingskundig* indicatie.
-    """
-    aerobic = *afe_float(activity.get("aerobicTra*ningEffect"))
-    anaerobic = safe*float(activity.get("anaerobicTrain*ngEffect"))
-    avg_hr = safe_floa*(activity.get("averageHR"))
-    du*ation = safe_float(activity.get("d*ration"))
+    aerobic = safe_float(activity.get("aerobicTrainingEffect"))
+    anaerobic = safe_float(activity.get("anaerobicTrainingEffect"))
+    average_hr = safe_float(activity.get("averageHR"))
+    duration = safe_float(activity.get("duration"))
 
-    if anaerobic >= 2.0*
+    if anaerobic >= 2.0:
         return True
 
-    if aerob*c >= 3.5:
+    if aerobic >= 3.5:
         return True
 
-   *if avg_hr >= 160 and duration >= 1*00:
+    if average_hr >= 160 and duration >= 1800:
         return True
 
-    retur* False
+    return False
 
 
-def get_sleep_info(garmin*:
-    """
-    Garmin geeft slaapda*a niet altijd via exact dezelfde s*ructuur terug.
-
-    Deze functie p*obeert:
-    - vandaag
-    - gister*n
-    - meerdere gekende sleepScor*-structuren
-    - recursieve fallb*ck
-    """
+def get_sleep_info(garmin):
     dates_to_try = [
-  *     now_be().date(),
-        now_*e().date() - timedelta(days=1)
-   *]
+        now_be().date(),
+        now_be().date() - timedelta(days=1)
+    ]
 
     attempts = []
 
-    for d in*dates_to_try:
-        d_str = d.st*ftime("%Y-%m-%d")
+    for day in dates_to_try:
+        day_string = day.strftime("%Y-%m-%d")
 
         try:
-  *         sleep_data = garmin.get_s*eep_data(d_str)
+            sleep_data = garmin.get_sleep_data(day_string)
 
-            attem*ts.append({
-                "date"* d_str,
-                "raw_avail*ble": bool(sleep_data)
-           *})
-
-            if not sleep_data:*                continue
-
-        *   score = None
-            qualit* = None
-
-            daily = sleep*data.get("dailySleepDTO", {}) if i*instance(sleep_data, dict) else {}*
-            if isinstance(daily, *ict):
-                score = dail*.get("sleepScore")
-
-              * if score is None:
-               *    scores = daily.get("sleepScore*", {})
-                    if isin*tance(scores, dict):
-             *          overall = scores.get("ov*rall", {})
-                       *if isinstance(overall, dict):
-    *                       score = ove*all.get("value")
-
-                *uality = (
-                    dai*y.get("qualityDescription")
-      *             or daily.get("sleepSc*reFeedback")
-                    o* daily.get("sleepQuality")
-       *        )
-
-            if score is*None:
-                score = recu*sive_find(
-                    sle*p_data,
-                    [
-    *                   "sleepScore",
- *                      "overallSlee*Score",
-                        "s*eepScoreValue"
-                   *]
-                )
-
-            i* quality is None:
-                *uality = recursive_find(
-         *          sleep_data,
-            *       [
-                        "*ualityDescription",
-              *         "sleepScoreFeedback",
-   *                    "sleepQualityT*pe",
-                        "slee*Quality"
-                    ]
-   *            )
-
-            if scor* is not None:
-                scor*_int = safe_int(score, default=-1)*
-                if score_int >= 0*
-                    return {
-    *                   "status": "besc*ikbaar",
-                        "*ate": d_str,
-                     *  "score": score_int,
-            *           "quality": quality or "*een kwaliteitslabel gevonden",
-   *                    "note": "Slaap*core gelezen uit Garmin sleep data*"
-                    }
-
-        e*cept Exception as e:
-            a*tempts.append({
-                "d*te": d_str,
-                "error*: str(e)
+            attempts.append({
+                "date": day_string,
+                "raw_available": bool(sleep_data)
             })
 
-    retur* {
-        "status": "niet beschik*aar",
+            if not sleep_data:
+                continue
+
+            score = None
+            quality = None
+
+            daily = sleep_data.get("dailySleepDTO", {}) if isinstance(sleep_data, dict) else {}
+
+            if isinstance(daily, dict):
+                score = daily.get("sleepScore")
+
+                if score is None:
+                    scores = daily.get("sleepScores", {})
+                    if isinstance(scores, dict):
+                        overall = scores.get("overall", {})
+                        if isinstance(overall, dict):
+                            score = overall.get("value")
+
+                quality = daily.get("qualityDescription")
+                if quality is None:
+                    quality = daily.get("sleepScoreFeedback")
+                if quality is None:
+                    quality = daily.get("sleepQuality")
+
+            if score is None:
+                score = recursive_find(
+                    sleep_data,
+                    [
+                        "sleepScore",
+                        "overallSleepScore",
+                        "sleepScoreValue"
+                    ]
+                )
+
+            if quality is None:
+                quality = recursive_find(
+                    sleep_data,
+                    [
+                        "qualityDescription",
+                        "sleepScoreFeedback",
+                        "sleepQualityType",
+                        "sleepQuality"
+                    ]
+                )
+
+            if score is not None:
+                score_int = safe_int(score, default=-1)
+
+                if score_int >= 0:
+                    return {
+                        "status": "beschikbaar",
+                        "date": day_string,
+                        "score": score_int,
+                        "quality": quality or "Geen kwaliteitslabel gevonden",
+                        "note": "Slaapscore gelezen uit Garmin sleep data."
+                    }
+
+        except Exception as error:
+            attempts.append({
+                "date": day_string,
+                "error": str(error)
+            })
+
+    return {
+        "status": "niet beschikbaar",
         "date": None,
-      * "score": None,
-        "quality":*None,
-        "note": "Slaapscore *on niet betrouwbaar gelezen worden* Mogelijke oorzaken: Garmin nog ni*t gesynchroniseerd, geen slaapscor* in account, of gewijzigde structu*r in Garmin Connect.",
-        "at*empts": attempts
+        "score": None,
+        "quality": None,
+        "note": "Slaapscore kon niet betrouwbaar gelezen worden. Mogelijke oorzaken: Garmin nog niet gesynchroniseerd, geen slaapscore in account, of gewijzigde structuur in Garmin Connect.",
+        "attempts": attempts
     }
 
 
-def summa*ize_activities(activities):
-    no* = now_be()
-    cutoff_7 = now - t*medelta(days=7)
-    cutoff_28 = no* - timedelta(days=28)
+def get_weather_forecast():
+    try:
+        base_url = "https://api.open-meteo.com/v1/forecast"
 
-    structu*ed = []
-
-    for act in activities*
-        dt = parse_garmin_datetim*(act.get("startTimeLocal"))
-      * discipline = classify_activity_ty*e(act.get("activityType", {}).get(*typeKey"))
-
-        item = {
-     *      "name": act.get("activityNam*"),
-            "type_key": act.ge*("activityType", {}).get("typeKey"*,
-            "discipline": discip*ine,
-            "datetime": dt,
- *          "date": dt.strftime("%Y-*m-%d") if dt else None,
-          * "distance_m": safe_float(act.get(*distance")),
-            "duration*sec": safe_float(act.get("duration*)),
-            "average_hr": act.*et("averageHR"),
-            "max_*r": act.get("maxHR"),
-            *aerobic_te": act.get("aerobicTrain*ngEffect"),
-            "anaerobic*te": act.get("anaerobicTrainingEff*ct"),
-            "hard": is_hard_*ession(act)
+        params = {
+            "latitude": WEATHER_LAT,
+            "longitude": WEATHER_LON,
+            "daily": "temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max",
+            "timezone": "Europe/Brussels",
+            "forecast_days": 5
         }
 
-        str*ctured.append(item)
+        url = base_url + "?" + urllib.parse.urlencode(params)
 
-    def summa*ize_since(cutoff, days_window):
-  *     filtered = [
-            a fo* a in structured
-            if a[*datetime"] and a["datetime"] >= cu*off
-        ]
+        with urllib.request.urlopen(url, timeout=15) as response:
+            data = json.loads(response.read().decode("utf-8"))
 
-        by_disc = {*
+        daily = data.get("daily", {})
+        days = daily.get("time", [])
+        tmax = daily.get("temperature_2m_max", [])
+        tmin = daily.get("temperature_2m_min", [])
+        rain = daily.get("precipitation_probability_max", [])
+        wind = daily.get("wind_speed_10m_max", [])
 
-        for disc in ["bike", "ru*", "swim", "strength", "other"]:
- *          subset = [
-             *  a for a in filtered
-            *   if a["discipline"] == disc
-    *       ]
+        forecast = []
 
-            by_disc[disc* = {
-                "sessions": l*n(subset),
-                "durati*n_sec": round(sum(a["duration_sec"* for a in subset)),
-              * "duration_h": round(sum(a["durati*n_sec"] for a in subset) / 3600, 2*,
-                "distance_km": r*und(sum(a["distance_m"] for a in s*bset) / 1000, 1)
-            }
-
-  *     training_dates = sorted(set(a*"date"] for a in filtered if a["da*e"]))
-        hard_sessions = [a f*r a in filtered if a["hard"]]
-
-   *    rest_days_estimate = None
-    *   if days_window == 7:
-          * rest_days_estimate = max(0, 7 - l*n(training_dates))
-
-        longes*_bike = max(
-            [a for a *n filtered if a["discipline"] == "*ike"],
-            key=lambda x: x*"duration_sec"],
-            defau*t=None
-        )
-
-        longest_*un = max(
-            [a for a in *iltered if a["discipline"] == "run*],
-            key=lambda x: x["du*ation_sec"],
-            default=N*ne
-        )
-
-        longest_swim*= max(
-            [a for a in fil*ered if a["discipline"] == "swim"]*
-            key=lambda x: x["dist*nce_m"],
-            default=None
-*       )
+        for index, day in enumerate(days):
+            forecast.append({
+                "date": day,
+                "temp_min_c": tmin[index] if index < len(tmin) else None,
+                "temp_max_c": tmax[index] if index < len(tmax) else None,
+                "rain_probability_pct": rain[index] if index < len(rain) else None,
+                "max_wind_kmh": wind[index] if index < len(wind) else None
+            })
 
         return {
-       *    "total_sessions": len(filtered*,
-            "total_duration_h": *ound(sum(a["duration_sec"] for a i* filtered) / 3600, 2),
-           *"hard_sessions": len(hard_sessions*,
-            "training_days": len*training_dates),
-            "rest*days_estimate": rest_days_estimate*
-            "by_discipline": by_d*sc,
+            "source": "Open-Meteo",
+            "status": "beschikbaar",
+            "forecast": forecast
+        }
+
+    except Exception as error:
+        return {
+            "source": "Open-Meteo",
+            "status": "niet beschikbaar",
+            "error": str(error),
+            "forecast": []
+        }
+
+
+def summarize_activities(activities):
+    current_time = now_be()
+    cutoff_7 = current_time - timedelta(days=7)
+    cutoff_28 = current_time - timedelta(days=28)
+
+    structured = []
+
+    for activity in activities:
+        activity_time = parse_garmin_datetime(activity.get("startTimeLocal"))
+        type_key = activity.get("activityType", {}).get("typeKey")
+        discipline = classify_activity_type(type_key)
+
+        item = {
+            "name": activity.get("activityName"),
+            "type_key": type_key,
+            "discipline": discipline,
+            "datetime": activity_time,
+            "date": activity_time.strftime("%Y-%m-%d") if activity_time else None,
+            "distance_m": safe_float(activity.get("distance")),
+            "duration_sec": safe_float(activity.get("duration")),
+            "average_hr": activity.get("averageHR"),
+            "max_hr": activity.get("maxHR"),
+            "aerobic_te": activity.get("aerobicTrainingEffect"),
+            "anaerobic_te": activity.get("anaerobicTrainingEffect"),
+            "hard": is_hard_session(activity)
+        }
+
+        structured.append(item)
+
+    def summarize_since(cutoff, days_window):
+        filtered = [
+            item for item in structured
+            if item["datetime"] and item["datetime"] >= cutoff
+        ]
+
+        by_discipline = {}
+
+        for discipline in ["bike", "run", "swim", "strength", "other"]:
+            subset = [
+                item for item in filtered
+                if item["discipline"] == discipline
+            ]
+
+            duration_total = sum(item["duration_sec"] for item in subset)
+            distance_total = sum(item["distance_m"] for item in subset)
+
+            by_discipline[discipline] = {
+                "sessions": len(subset),
+                "duration_h": round(duration_total / 3600, 2),
+                "distance_km": round(distance_total / 1000, 1)
+            }
+
+        training_dates = sorted(set(item["date"] for item in filtered if item["date"]))
+        hard_sessions = [item for item in filtered if item["hard"]]
+
+        rest_days_estimate = None
+        if days_window == 7:
+            rest_days_estimate = max(0, 7 - len(training_dates))
+
+        longest_bike = max(
+            [item for item in filtered if item["discipline"] == "bike"],
+            key=lambda item: item["duration_sec"],
+            default=None
+        )
+
+        longest_run = max(
+            [item for item in filtered if item["discipline"] == "run"],
+            key=lambda item: item["duration_sec"],
+            default=None
+        )
+
+        longest_swim = max(
+            [item for item in filtered if item["discipline"] == "swim"],
+            key=lambda item: item["distance_m"],
+            default=None
+        )
+
+        return {
+            "total_sessions": len(filtered),
+            "total_duration_h": round(sum(item["duration_sec"] for item in filtered) / 3600, 2),
+            "hard_sessions": len(hard_sessions),
+            "training_days": len(training_dates),
+            "rest_days_estimate": rest_days_estimate,
+            "by_discipline": by_discipline,
             "longest_bike": {
-*               "date": longest_bik*["date"],
-                "duratio*": format_duration(longest_bike["d*ration_sec"]),
-                "di*tance_km": km(longest_bike["distan*e_m"])
-            } if longest_bi*e else None,
-            "longest_*un": {
-                "date": lon*est_run["date"],
-                "*uration": format_duration(longest_*un["duration_sec"]),
-             *  "distance_km": km(longest_run["d*stance_m"])
-            } if longe*t_run else None,
-            "long*st_swim": {
-                "date"* longest_swim["date"],
-           *    "duration": format_duration(lo*gest_swim["duration_sec"]),
-      *         "distance_km": km(longest*swim["distance_m"])
-            } *f longest_swim else None
-        }*
-    last_10 = []
+                "date": longest_bike["date"],
+                "duration": format_duration(longest_bike["duration_sec"]),
+                "distance_km": km(longest_bike["distance_m"])
+            } if longest_bike else None,
+            "longest_run": {
+                "date": longest_run["date"],
+                "duration": format_duration(longest_run["duration_sec"]),
+                "distance_km": km(longest_run["distance_m"])
+            } if longest_run else None,
+            "longest_swim": {
+                "date": longest_swim["date"],
+                "duration": format_duration(longest_swim["duration_sec"]),
+                "distance_km": km(longest_swim["distance_m"])
+            } if longest_swim else None
+        }
 
-    for a in st*uctured[:10]:
-        last_10.appe*d({
-            "date": a["date"],*            "name": a["name"],
-   *        "discipline": a["disciplin*"],
-            "duration": format*duration(a["duration_sec"]),
-     *      "distance_km": km(a["distanc*_m"]),
-            "avg_hr": a["av*rage_hr"],
-            "aerobic_te*: a["aerobic_te"],
-            "an*erobic_te": a["anaerobic_te"],
-   *        "hard": a["hard"]
-        *)
+    recent_activities = []
 
-    latest = structured[0] if s*ructured else None
+    for item in structured[:10]:
+        recent_activities.append({
+            "date": item["date"],
+            "name": item["name"],
+            "discipline": item["discipline"],
+            "duration": format_duration(item["duration_sec"]),
+            "distance_km": km(item["distance_m"]),
+            "avg_hr": item["average_hr"],
+            "aerobic_te": item["aerobic_te"],
+            "anaerobic_te": item["anaerobic_te"],
+            "hard": item["hard"]
+        })
 
-    quality = *
-        "activities_loaded": len(*ctivities),
-        "activities_wi*h_datetime": len([a for a in struc*ured if a["datetime"]]),
-        "*ctivities_with_hr": len([a for a i* structured if a["average_hr"] is *ot None]),
-        "activities_wit*_training_effect": len([
-         *  a for a in structured
-          * if a["aerobic_te"] is not None or*a["anaerobic_te"] is not None
-    *   ])
+    latest = structured[0] if structured else None
+
+    data_quality = {
+        "activities_loaded": len(activities),
+        "activities_with_datetime": len([item for item in structured if item["datetime"]]),
+        "activities_with_hr": len([item for item in structured if item["average_hr"] is not None]),
+        "activities_with_training_effect": len([
+            item for item in structured
+            if item["aerobic_te"] is not None or item["anaerobic_te"] is not None
+        ])
     }
 
     return {
-        *data_quality": quality,
-        "l*st_7_days": summarize_since(cutoff*7, 7),
-        "last_28_days": sum*arize_since(cutoff_28, 28),
-      * "latest_activity": {
-            *date": latest["date"],
-           *"name": latest["name"],
-          * "discipline": latest["discipline"*,
-            "duration": format_d*ration(latest["duration_sec"]),
-  *         "distance_km": km(latest[*distance_m"]),
-            "avg_hr*: latest["average_hr"],
-          * "aerobic_te": latest["aerobic_te"*,
-            "anaerobic_te": late*t["anaerobic_te"],
-            "ha*d": latest["hard"]
-        } if la*est else None,
-        "recent_act*vities": last_10
+        "data_quality": data_quality,
+        "last_7_days": summarize_since(cutoff_7, 7),
+        "last_28_days": summarize_since(cutoff_28, 28),
+        "latest_activity": {
+            "date": latest["date"],
+            "name": latest["name"],
+            "discipline": latest["discipline"],
+            "duration": format_duration(latest["duration_sec"]),
+            "distance_km": km(latest["distance_m"]),
+            "avg_hr": latest["average_hr"],
+            "aerobic_te": latest["aerobic_te"],
+            "anaerobic_te": latest["anaerobic_te"],
+            "hard": latest["hard"]
+        } if latest else None,
+        "recent_activities": recent_activities
     }
 
 
-# =======*==================================*=================
-# 4. WEER
-# ====*==================================*====================
+def next_races(today):
+    result = []
 
-def get_weat*er_forecast():
-    """
-    Gratis *eerdata via Open-Meteo, zonder API*key.
-    """
-    try:
-        base*url = "https://api.open-meteo.com/*1/forecast"
-
-        params = {
-  *         "latitude": WEATHER_LAT,
-*           "longitude": WEATHER_LO*,
-            "daily": "temperatur*_2m_max,temperature_2m_min,precipi*ation_probability_max,wind_speed_1*m_max",
-            "timezone": "E*rope/Brussels",
-            "forec*st_days": 5
-        }
-
-        url*= base_url + "?" + urllib.parse.ur*encode(params)
-
-        with urlli*.request.urlopen(url, timeout=15) *s response:
-            data = jso*.loads(response.read().decode("utf*8"))
-
-        daily = data.get("da*ly", {})
-        days = daily.get(*time", [])
-        tmax = daily.ge*("temperature_2m_max", [])
-       *tmin = daily.get("temperature_2m_m*n", [])
-        rain = daily.get("*recipitation_probability_max", [])*        wind = daily.get("wind_spe*d_10m_max", [])
-
-        forecast * []
-
-        for i, d in enumerate*days):
-            forecast.append*{
-                "date": d,
-     *          "temp_min_c": tmin[i] if*i < len(tmin) else None,
-         *      "temp_max_c": tmax[i] if i <*len(tmax) else None,
-             *  "rain_probability_pct": rain[i] *f i < len(rain) else None,
-       *        "max_wind_kmh": wind[i] if*i < len(wind) else None
-          * })
-
-        return {
-            *source": "Open-Meteo",
-           *"status": "beschikbaar",
-         *  "forecast": forecast
-        }
-
-*   except Exception as e:
-        *eturn {
-            "source": "Ope*-Meteo",
-            "status": "ni*t beschikbaar",
-            "error*: str(e),
-            "forecast": *]
-        }
-
-
-# ==================*==================================*======
-# 5. WEDSTRIJD- EN FASELOGI*A
-# ==============================*=============================
-
-def*next_races(today):
-    result = []*
     for race in RACES:
-        ra*e_date = datetime.strptime(race["d*te"], "%Y-%m-%d").date()
-        d*ys_until = (race_date - today).day*
+        race_date = datetime.strptime(race["date"], "%Y-%m-%d").date()
+        days_until = (race_date - today).days
 
         if days_until >= 0:
-    *       enriched = dict(race)
-     *      enriched["days_until"] = day*_until
-            result.append(e*riched)
+            enriched = dict(race)
+            enriched["days_until"] = days_until
+            result.append(enriched)
 
     return result
 
 
-def d*termine_training_phase(today):
-   *"""
-    Planning rond de opgegeven*wedstrijden.
+def determine_training_phase(today):
+    current_date = today
 
-    Prioriteiten:
-  * - Haasdonk: A
-    - Sombeke: A
-  * - Atomse Pijl Denderhoutem: B, fu*wedstrijd
-    - Triatlon Donkmeer:*C, plezier
-    """
-    d = today
-
-*   if d <= date(2026, 7, 27):
-    *   return {
-            "phase": "*ike build met gecontroleerd triatl*nonderhoud",
-            "goal": "*oersspecifieke fietsconditie opbou*en zonder extra loopvermoeidheid."*
-            "rules": [
-          *     "Fietsen is hoofdprioriteit."*
-                "Zwemmen mag tech*iek of herstel zijn.",
-           *    "Lopen blijft kort en comforta*el.",
-                "Geen zware *oopintervallen.",
-                *Maximaal twee intensieve fietsprik*els per week.",
-                "G*en onnodige bricktrainingen."
-    *       ]
-        }
-
-    if date(20*6, 7, 28) <= d <= date(2026, 7, 31*:
+    if current_date <= date(2026, 7, 27):
         return {
-            "ph*se": "Lichte taper richting Triatl*n Donkmeer als plezierwedstrijd",
-*           "goal": "Fris genoeg bl*jven voor Donkmeer, zonder echte t*iatlonpiek te creëren.",
-         *  "rules": [
-                "Geen*zware looptrainingen.",
-          *     "Korte fietsopeners zijn toeg*staan.",
-                "Zwemmen *lleen technisch en ontspannen.",
- *              "Geen vermoeidheid c*eëren voor het wielerblok in augus*us.",
-                "Triatlonvoo*bereiding mag de fietsfocus niet v*rstoren."
-            ]
-        }
-*    if d == date(2026, 8, 1):
-    *   return {
-            "phase": "*riatlon Donkmeer racedag",
-       *    "goal": "Genieten, gecontrolee*d afwerken en geen diepe put grave*.",
+            "phase": "Bike build met gecontroleerd triatlononderhoud",
+            "goal": "Koersspecifieke fietsconditie opbouwen zonder extra loopvermoeidheid.",
             "rules": [
-       *        "Triatlon is geen hoofddoe*.",
-                "Niet forceren*in het lopen.",
-                "F*etsen stevig maar gecontroleerd.",*                "Na afloop focus o* herstel.",
-                "Geen *xtra training naast de wedstrijd."*            ]
-        }
-
-    if da*e(2026, 8, 2) <= d <= date(2026, 8* 5):
-        return {
-            *phase": "Herstel na Triatlon Donkm*er",
-            "goal": "Vermoeid*eid laten zakken en fietsbenen opn*euw activeren.",
-            "rule*": [
-                "Geen intensi*ve looptraining.",
-               *"Geen lange duurtraining.",
-      *         "Lichte fietsritten en he*stel zijn prioritair.",
-          *     "Pas intensiteit toevoegen al* benen fris aanvoelen.",
-         *      "Focus op herstel richting H*asdonk."
+                "Fietsen is hoofdprioriteit.",
+                "Zwemmen mag techniek of herstel zijn.",
+                "Lopen blijft kort en comfortabel.",
+                "Geen zware loopintervallen.",
+                "Maximaal twee intensieve fietsprikkels per week.",
+                "Geen onnodige bricktrainingen."
             ]
         }
 
-*   if date(2026, 8, 6) <= d <= dat*(2026, 8, 12):
+    if date(2026, 7, 28) <= current_date <= date(2026, 7, 31):
         return {
-  *         "phase": "Laatste koerssp*cifieke build richting Haasdonk",
-*           "goal": "Punch, VO2 en *erhaalde versnellingen aanscherpen*",
+            "phase": "Lichte taper richting Triatlon Donkmeer als plezierwedstrijd",
+            "goal": "Fris genoeg blijven voor Donkmeer, zonder echte triatlonpiek te creëren.",
             "rules": [
-        *       "Een of twee korte intensie*e fietsprikkels in deze periode.",*                "Geen loopbelastin* die fietsfrisheid aantast.",
-    *           "Rustdagen respecteren.*,
-                "Geen onnodig vo*ume.",
-                "Koersspeci*iek werken: korte versnellingen, p*sitionering, tempowissels."
-      *     ]
-        }
-
-    if date(2026* 8, 13) <= d <= date(2026, 8, 16):*        return {
-            "phas*": "Taper richting Wielerwedstrijd*Haasdonk",
-            "goal": "Fr*s, scherp en explosief aan de star* komen.",
-            "rules": [
- *              "Volume sterk beperk*n.",
-                "Korte opener*, geen zware blokken.",
-          *     "Geen looptraining meer tenzi* zeer kort en los.",
-             *  "Slaap en herstel primeren.",
-  *             "Geen training die sp*erpijn of diepe vermoeidheid kan v*roorzaken."
-            ]
-        *
-
-    if date(2026, 8, 17) <= d <=*date(2026, 8, 18):
-        return *
-            "phase": "Herstel na *aasdonk",
-            "goal": "Spi*rvermoeidheid en koersstress laten*zakken.",
-            "rules": [
- *              "Alleen herstelrit o* rust.",
-                "Geen int*nsiteit.",
-                "Geen l*opbelasting.",
-                "Ev*lueren hoe diep de wedstrijd zat."*            ]
-        }
-
-    if da*e(2026, 8, 19) <= d <= date(2026, *, 21):
-        return {
-          * "phase": "Aanscherpen richting So*beke",
-            "goal": "Vorm b*houden met minimale vermoeidheid."*
-            "rules": [
-          *     "Korte intensiteit mag, maar *een lange blokken.",
-             *  "Volume laag houden.",
-         *      "Geen zware krachttraining."*
-                "Frisheid is bela*grijker dan extra trainingswinst."*
-                "Geen looptrainin* die de fietsbenen belast."
-      *     ]
-        }
-
-    if d == date*2026, 8, 22):
-        return {
-   *        "phase": "Wielerwedstrijd *ombeke racedag",
-            "goal*: "Koersprestatie maximaliseren.",*            "rules": [
-           *    "Geen extra training.",
-      *         "Korte activatie indien n*dig.",
-                "Voeding en*warming-up concreet houden.",
-    *           "Focus op positionering*en herhaalde versnellingen."
-     *      ]
-        }
-
-    if date(202*, 8, 23) <= d <= date(2026, 8, 24)*
-        return {
-            "pha*e": "Herstel na Sombeke",
-        *   "goal": "Herstellen zonder vorm*erlies.",
-            "rules": [
- *              "Rust of zeer lichte*fietsrit.",
-                "Geen *ntensiteit.",
-                "Gee* loopbelasting.",
-                *Check vermoeidheid en slaap."
-    *       ]
-        }
-
-    if date(20*6, 8, 25) <= d <= date(2026, 8, 27*:
-        return {
-            "ph*se": "Aanscherpen richting Atomse *ijl Denderhoutem",
-            "go*l": "Scherpte behouden voor de fun*edstrijd, zonder nog vermoeidheid *p te bouwen.",
-            "rules"* [
-                "Korte koerspri*kels toegestaan.",
-               *"Geen lange duurtraining meer.",
- *              "Geen diepe interval*.",
-                "Geen loopbela*ting.",
-                "Frisheid *elangrijker dan extra trainingswin*t.",
-                "Denderhoutem*is een funwedstrijd: scherp starte*, maar niet forceren als het licha*m vermoeid is na Haasdonk en Sombe*e."
+                "Geen zware looptrainingen.",
+                "Korte fietsopeners zijn toegestaan.",
+                "Zwemmen alleen technisch en ontspannen.",
+                "Geen vermoeidheid creëren voor het wielerblok in augustus.",
+                "Triatlonvoorbereiding mag de fietsfocus niet verstoren."
             ]
         }
 
-    i* d == date(2026, 8, 28):
-        r*turn {
-            "phase": "Atoms* Pijl Denderhoutem racedag",
-     *      "goal": "Koersgericht rijden*met focus op fun, positionering en*korte versnellingen.",
-           *"rules": [
-                "Geen e*tra training naast de wedstrijd.",*                "Korte warming-up *et enkele korte versnellingen.",
- *              "Niet starten alsof *it een A-piek is.",
-              * "Gebruik de wedstrijd als scherpe*koersprikkel.",
-                "F*cus op veilig rijden, positionerin* en doseren op eventuele selectiev* stukken."
+    if current_date == date(2026, 8, 1):
+        return {
+            "phase": "Triatlon Donkmeer racedag",
+            "goal": "Genieten, gecontroleerd afwerken en geen diepe put graven.",
+            "rules": [
+                "Triatlon is geen hoofddoel.",
+                "Niet forceren in het lopen.",
+                "Fietsen stevig maar gecontroleerd.",
+                "Na afloop focus op herstel.",
+                "Geen extra training naast de wedstrijd."
             ]
-        }*
+        }
+
+    if date(2026, 8, 2) <= current_date <= date(2026, 8, 5):
+        return {
+            "phase": "Herstel na Triatlon Donkmeer",
+            "goal": "Vermoeidheid laten zakken en fietsbenen opnieuw activeren.",
+            "rules": [
+                "Geen intensieve looptraining.",
+                "Geen lange duurtraining.",
+                "Lichte fietsritten en herstel zijn prioritair.",
+                "Pas intensiteit toevoegen als benen fris aanvoelen.",
+                "Focus op herstel richting Haasdonk."
+            ]
+        }
+
+    if date(2026, 8, 6) <= current_date <= date(2026, 8, 12):
+        return {
+            "phase": "Laatste koersspecifieke build richting Haasdonk",
+            "goal": "Punch, VO2 en herhaalde versnellingen aanscherpen.",
+            "rules": [
+                "Een of twee korte intensieve fietsprikkels in deze periode.",
+                "Geen loopbelasting die fietsfrisheid aantast.",
+                "Rustdagen respecteren.",
+                "Geen onnodig volume.",
+                "Koersspecifiek werken: korte versnellingen, positionering, tempowissels."
+            ]
+        }
+
+    if date(2026, 8, 13) <= current_date <= date(2026, 8, 16):
+        return {
+            "phase": "Taper richting Wielerwedstrijd Haasdonk",
+            "goal": "Fris, scherp en explosief aan de start komen.",
+            "rules": [
+                "Volume sterk beperken.",
+                "Korte openers, geen zware blokken.",
+                "Geen looptraining meer tenzij zeer kort en los.",
+                "Slaap en herstel primeren.",
+                "Geen training die spierpijn of diepe vermoeidheid kan veroorzaken."
+            ]
+        }
+
+    if date(2026, 8, 17) <= current_date <= date(2026, 8, 18):
+        return {
+            "phase": "Herstel na Haasdonk",
+            "goal": "Spiervermoeidheid en koersstress laten zakken.",
+            "rules": [
+                "Alleen herstelrit of rust.",
+                "Geen intensiteit.",
+                "Geen loopbelasting.",
+                "Evalueren hoe diep de wedstrijd zat."
+            ]
+        }
+
+    if date(2026, 8, 19) <= current_date <= date(2026, 8, 21):
+        return {
+            "phase": "Aanscherpen richting Sombeke",
+            "goal": "Vorm behouden met minimale vermoeidheid.",
+            "rules": [
+                "Korte intensiteit mag, maar geen lange blokken.",
+                "Volume laag houden.",
+                "Geen zware krachttraining.",
+                "Frisheid is belangrijker dan extra trainingswinst.",
+                "Geen looptraining die de fietsbenen belast."
+            ]
+        }
+
+    if current_date == date(2026, 8, 22):
+        return {
+            "phase": "Wielerwedstrijd Sombeke racedag",
+            "goal": "Koersprestatie maximaliseren.",
+            "rules": [
+                "Geen extra training.",
+                "Korte activatie indien nodig.",
+                "Voeding en warming-up concreet houden.",
+                "Focus op positionering en herhaalde versnellingen."
+            ]
+        }
+
+    if date(2026, 8, 23) <= current_date <= date(2026, 8, 24):
+        return {
+            "phase": "Herstel na Sombeke",
+            "goal": "Herstellen zonder vormverlies.",
+            "rules": [
+                "Rust of zeer lichte fietsrit.",
+                "Geen intensiteit.",
+                "Geen loopbelasting.",
+                "Check vermoeidheid en slaap."
+            ]
+        }
+
+    if date(2026, 8, 25) <= current_date <= date(2026, 8, 27):
+        return {
+            "phase": "Aanscherpen richting Atomse Pijl Denderhoutem",
+            "goal": "Scherpte behouden voor de funwedstrijd, zonder nog vermoeidheid op te bouwen.",
+            "rules": [
+                "Korte koersprikkels toegestaan.",
+                "Geen lange duurtraining meer.",
+                "Geen diepe intervals.",
+                "Geen loopbelasting.",
+                "Frisheid belangrijker dan extra trainingswinst.",
+                "Denderhoutem is een funwedstrijd: scherp starten, maar niet forceren als het lichaam vermoeid is na Haasdonk en Sombeke."
+            ]
+        }
+
+    if current_date == date(2026, 8, 28):
+        return {
+            "phase": "Atomse Pijl Denderhoutem racedag",
+            "goal": "Koersgericht rijden met focus op fun, positionering en korte versnellingen.",
+            "rules": [
+                "Geen extra training naast de wedstrijd.",
+                "Korte warming-up met enkele korte versnellingen.",
+                "Niet starten alsof dit een A-piek is.",
+                "Gebruik de wedstrijd als scherpe koersprikkel.",
+                "Focus op veilig rijden, positionering en doseren op eventuele selectieve stukken."
+            ]
+        }
+
     return {
-        "phase": "Po*t-race overgang",
-        "goal": *Herstel, evaluatie en nieuwe doele* bepalen.",
+        "phase": "Post-race overgang",
+        "goal": "Herstel, evaluatie en nieuwe doelen bepalen.",
         "rules": [
-   *        "Geen automatische zware o*bouw.",
-            "Eerst herstel*tatus evalueren.",
-            "Ni*uwe doelstelling bepalen voor volg*nde blok."
+            "Geen automatische zware opbouw.",
+            "Eerst herstelstatus evalueren.",
+            "Nieuwe doelstelling bepalen voor volgende blok."
         ]
     }
 
 
-# ===*==================================*=====================
-# 6. HERSTEL* EN RISICOLOGICA
-# ===============*==================================*=========
-
-def determine_recovery_*isk(summary, sleep_info, user_feed*ack):
+def determine_recovery_risk(summary, sleep_info, user_feedback):
     reasons = []
-    risk_sc*re = 0
+    risk_score = 0
 
-    lower_feedback = (user*feedback or "").lower()
+    lower_feedback = (user_feedback or "").lower()
 
-    pain_*ords = [
+    pain_words = [
         "pijn",
-        "*lessure",
+        "blessure",
         "knie",
-        *achilles",
+        "achilles",
         "scheen",
-     *  "rug",
+        "rug",
         "ziek",
-        "*oorts",
+        "koorts",
         "verkouden",
-     *  "oververmoeid",
-        "uitgepu*",
+        "oververmoeid",
+        "uitgeput",
         "zeer moe",
-        "sl*cht geslapen",
-        "zware bene*",
+        "slecht geslapen",
+        "zware benen",
         "lege benen",
-        "*een energie"
+        "geen energie"
     ]
 
-    if any(wor* in lower_feedback for word in pai*_words):
-        risk_score += 3
- *      reasons.append("Subjectieve *eedback bevat pijn/vermoeidheid/zi*kte-indicatie.")
+    for word in pain_words:
+        if word in lower_feedback:
+            risk_score += 3
+            reasons.append("Subjectieve feedback bevat pijn, vermoeidheid of ziekte-indicatie.")
+            break
 
-    if sleep_inf*.get("score") is not None:
-       *score = safe_int(sleep_info.get("s*ore"))
+    if sleep_info.get("score") is not None:
+        score = safe_int(sleep_info.get("score"))
 
         if score < 60:
-   *        risk_score += 3
-          * reasons.append(f"Slaapscore is ze*r laag: {score}/100.")
-        eli* score < 70:
-            risk_scor* += 2
-            reasons.append(f*Slaapscore is laag: {score}/100.")*        elif score < 78:
-         *  risk_score += 1
-            reas*ns.append(f"Slaapscore is matig: {*core}/100.")
+            risk_score += 3
+            reasons.append(f"Slaapscore is zeer laag: {score}/100.")
+        elif score < 70:
+            risk_score += 2
+            reasons.append(f"Slaapscore is laag: {score}/100.")
+        elif score < 78:
+            risk_score += 1
+            reasons.append(f"Slaapscore is matig: {score}/100.")
     else:
-        ris*_score += 1
-        reasons.append*"Slaapscore ontbreekt; geen positi*ve herstelconclusie trekken.")
+        risk_score += 1
+        reasons.append("Slaapscore ontbreekt; geen positieve herstelconclusie trekken.")
 
-  * last_7 = summary.get("last_7_days*, {})
-    hard_sessions = safe_int*last_7.get("hard_sessions"))
-    t*tal_h = safe_float(last_7.get("tot*l_duration_h"))
-    rest_days = la*t_7.get("rest_days_estimate")
+    last_7 = summary.get("last_7_days", {})
+    hard_sessions = safe_int(last_7.get("hard_sessions"))
+    total_h = safe_float(last_7.get("total_duration_h"))
+    rest_days = last_7.get("rest_days_estimate")
 
-   *if hard_sessions >= 3:
-        ris*_score += 2
-        reasons.append*f"Veel intensieve sessies in de la*tste 7 dagen: {hard_sessions}.")
- *  elif hard_sessions == 2:
-       *risk_score += 1
-        reasons.ap*end("Twee intensieve sessies in de*laatste 7 dagen.")
-
-    if rest_da*s is not None and rest_days <= 1:
-*       risk_score += 1
-        rea*ons.append("Weinig rustdagen in de*laatste 7 dagen.")
-
-    if total_h*>= 10:
+    if hard_sessions >= 3:
         risk_score += 2
-   *    reasons.append(f"Hoog totaalvo*ume laatste 7 dagen: {total_h} uur*")
-    elif total_h >= 7:
-        *isk_score += 1
-        reasons.app*nd(f"Matig tot hoog totaalvolume l*atste 7 dagen: {total_h} uur.")
+        reasons.append(f"Veel intensieve sessies in de laatste 7 dagen: {hard_sessions}.")
+    elif hard_sessions == 2:
+        risk_score += 1
+        reasons.append("Twee intensieve sessies in de laatste 7 dagen.")
 
- *  if risk_score >= 5:
-        leve* = "hoog"
+    if rest_days is not None and rest_days <= 1:
+        risk_score += 1
+        reasons.append("Weinig rustdagen in de laatste 7 dagen.")
+
+    if total_h >= 10:
+        risk_score += 2
+        reasons.append(f"Hoog totaalvolume laatste 7 dagen: {total_h} uur.")
+    elif total_h >= 7:
+        risk_score += 1
+        reasons.append(f"Matig tot hoog totaalvolume laatste 7 dagen: {total_h} uur.")
+
+    if risk_score >= 5:
+        level = "hoog"
         allowed = [
-    *       "rust",
-            "mobili*eit",
-            "zeer lichte her*telrit 30-45 min",
-            "ea*y swim techniek",
-            "gee* intervals",
-            "geen lan*e duur",
-            "geen brick",*            "geen zware looptraini*g",
-            "geen dubbele trai*ingsdag"
+            "rust",
+            "mobiliteit",
+            "zeer lichte herstelrit 30 tot 45 min",
+            "easy swim techniek",
+            "geen intervals",
+            "geen lange duur",
+            "geen brick",
+            "geen zware looptraining",
+            "geen dubbele trainingsdag"
         ]
-    elif risk_s*ore >= 3:
-        level = "medium"*        allowed = [
-            "l*chte tot matige training",
-       *    "maximaal korte fietsprikkel a*s de benen goed voelen",
-         *  "volume niet verhogen",
-        *   "geen zware loopbelasting",
-   *        "geen dubbele trainingsdag*,
-            "geen diepe interval*"
+    elif risk_score >= 3:
+        level = "medium"
+        allowed = [
+            "lichte tot matige training",
+            "maximaal korte fietsprikkel als de benen goed voelen",
+            "volume niet verhogen",
+            "geen zware loopbelasting",
+            "geen dubbele trainingsdag",
+            "geen diepe intervals"
         ]
     else:
-        leve* = "laag"
+        level = "laag"
         allowed = [
-    *       "normale geplande fietstrai*ing toegestaan",
-            "maxi*aal een hoofdtraining per dag",
-  *         "intensiteit alleen als d*t past binnen de fase",
-          * "looptraining ondergeschikt aan f*etsfocus",
+            "normale geplande fietstraining toegestaan",
+            "maximaal een hoofdtraining per dag",
+            "intensiteit alleen als dit past binnen de fase",
+            "looptraining ondergeschikt aan fietsfocus",
             "geen onnodige extra sessies"
         ]
 
@@ -831,10 +771,6 @@ def determine_recovery_*isk(summary, sleep_info, user_feed*ack):
         "allowed_training_boundaries": allowed
     }
 
-
-# ============================================================
-# 7. PROMPT EN AI-CALLS
-# ============================================================
 
 def build_coach_context(summary, sleep_info, weather, phase, races, recovery):
     today = now_be().date()
@@ -954,8 +890,7 @@ Context in JSON:
 
 
 def call_gemini(prompt):
-    if not GEMINI_API_KEY:
-        raise Exception("GEMINI_API_KEY ontbreekt.")
+    require_env("GEMINI_API_KEY", GEMINI_API_KEY)
 
     client = genai.Client(api_key=GEMINI_API_KEY)
 
@@ -981,100 +916,30 @@ def call_gemini(prompt):
                 if text and text.strip():
                     return text.strip()
 
-            except Exception as e:
-                last_error = e
-                error_text = str(e).lower()
+            except Exception as error:
+                last_error = error
+                error_text = str(error).lower()
 
-                if (
-                    "503" in error_text
-                    or "unavailable" in error_text
-                    or "rate" in error_text
-                    or "429" in error_text
-                    or "resource_exhausted" in error_text
-                ):
+                temporary_error = False
+
+                if "503" in error_text:
+                    temporary_error = True
+                if "unavailable" in error_text:
+                    temporary_error = True
+                if "rate" in error_text:
+                    temporary_error = True
+                if "429" in error_text:
+                    temporary_error = True
+                if "resource_exhausted" in error_text:
+                    temporary_error = True
+
+                if temporary_error:
                     time.sleep(10)
                 else:
                     raise
 
     raise Exception(f"Gemini gaf geen bruikbare output. Laatste fout: {last_error}")
 
-
-def call_groq(prompt):
-    if not GROQ_API_KEY:
-        raise Exception("GROQ_API_KEY ontbreekt.")
-
-    if Groq is None:
-        raise Exception("Groq package is niet beschikbaar.")
-
-    client = Groq(api_key=GROQ_API_KEY)
-
-    models_to_try = [
-        "llama-3.3-70b-versatile",
-        "llama-3.1-8b-instant"
-    ]
-
-    last_error = None
-
-    for model_name in models_to_try:
-        for attempt in range(3):
-            try:
-                print(f"Groq call: {model_name}, poging {attempt + 1}/3")
-
-                completion = client.chat.completions.create(
-                    model=model_name,
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": "Je bent een nuchtere wielercoach. Antwoord in het Nederlands, concreet, conservatief en kort."
-                        },
-                        {
-                            "role": "user",
-                            "content": prompt
-                        }
-                    ],
-                    temperature=0.2,
-                    max_tokens=1800
-                )
-
-                text = completion.choices[0].message.content
-
-                if text and text.strip():
-                    return text.strip()
-
-            except Exception as e:
-                last_error = e
-                time.sleep(10)
-
-    raise Exception(f"Groq gaf geen bruikbare output. Laatste fout: {last_error}")
-
-
-def generate_ai_text(prompt):
-    """
-    Gratis-first:
-    1. Gemini
-    2. Groq fallback als GROQ_API_KEY bestaat
-    """
-    errors = []
-
-    try:
-        return call_gemini(prompt)
-    except Exception as e:
-        errors.append(f"Gemini fout: {str(e)}")
-        print(errors[-1])
-
-    if GROQ_API_KEY:
-        try:
-            return call_groq(prompt)
-        except Exception as e:
-            errors.append(f"Groq fout: {str(e)}")
-            print(errors[-1])
-
-    raise Exception("Geen AI-output beschikbaar. " + " | ".join(errors))
-
-
-# ============================================================
-# 8. MAIL
-# ============================================================
 
 def subject_for_mode(context):
     races = context.get("upcoming_races", [])
@@ -1114,19 +979,13 @@ def send_email(subject, body):
         server.sendmail(GMAIL_ADRES, EMAIL_ONTVANGER, msg.as_string())
 
 
-# ============================================================
-# 9. MAIN
-# ============================================================
-
 def main():
     require_env("GARMIN_EMAIL", GARMIN_EMAIL)
     require_env("GARMIN_WACHTWOORD", GARMIN_WACHTWOORD)
+    require_env("GEMINI_API_KEY", GEMINI_API_KEY)
     require_env("GMAIL_ADRES", GMAIL_ADRES)
     require_env("GMAIL_APP_WACHTWOORD", GMAIL_APP_WACHTWOORD)
     require_env("EMAIL_ONTVANGER", EMAIL_ONTVANGER)
-
-    if not GEMINI_API_KEY and not GROQ_API_KEY:
-        raise Exception("Er is geen AI API key ingesteld. Minstens GEMINI_API_KEY of GROQ_API_KEY is nodig.")
 
     print("[STAP 1] Inloggen bij Garmin")
 
@@ -1175,7 +1034,7 @@ def main():
 
     print("[STAP 7] AI advies genereren")
 
-    ai_text = generate_ai_text(prompt)
+    ai_text = call_gemini(prompt)
 
     technical_footer = f"""
 
@@ -1208,9 +1067,8 @@ if __name__ == "__main__":
     try:
         main()
     except Exception:
-        print("\n" + "=" * 60)
+        print("")
         print("CRITICAL ERROR")
-        print("=" * 60)
         traceback.print_exc()
-        print("=" * 60 + "\n")
+        print("")
         sys.exit(1)
