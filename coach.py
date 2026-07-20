@@ -33,6 +33,14 @@ EXTRA_CONTEXT = os.environ.get("EXTRA_CONTEXT") or ""
 
 MODUS = "dagadvies" if EVENT_NAME == "schedule" else GEKOZEN_MODUS
 
+ANALYSEPERIODE_DAGEN = os.environ.get("ANALYSEPERIODE_DAGEN") or "90"
+POWERDATA = os.environ.get("POWERDATA") or "soms"
+FTP = os.environ.get("FTP") or "onbekend"
+MAX_HR = os.environ.get("MAX_HR") or "onbekend"
+RUST_HR = os.environ.get("RUST_HR") or "onbekend"
+GEWICHT = os.environ.get("GEWICHT") or "72"
+FOCUS_CONDITIEANALYSE = os.environ.get("FOCUS_CONDITIEANALYSE") or "wielervorm, koerspunch en herstel"
+
 WEATHER_LAT = 51.03
 WEATHER_LON = 4.10
 
@@ -88,6 +96,8 @@ def safe_float(value, default=0.0):
     try:
         if value is None:
             return default
+        if str(value).lower() == "onbekend":
+            return default
         return float(value)
     except Exception:
         return default
@@ -97,7 +107,9 @@ def safe_int(value, default=0):
     try:
         if value is None:
             return default
-        return int(value)
+        if str(value).lower() == "onbekend":
+            return default
+        return int(float(value))
     except Exception:
         return default
 
@@ -146,6 +158,13 @@ def recursive_find(data, keys):
             if found is not None:
                 return found
 
+    return None
+
+
+def get_first_available(activity, keys):
+    for key in keys:
+        if key in activity and activity[key] is not None:
+            return activity[key]
     return None
 
 
@@ -334,6 +353,8 @@ def summarize_activities(activities):
     current_time = now_be()
     cutoff_7 = current_time - timedelta(days=7)
     cutoff_28 = current_time - timedelta(days=28)
+    analysis_days = safe_int(ANALYSEPERIODE_DAGEN, 90)
+    cutoff_analysis = current_time - timedelta(days=analysis_days)
 
     structured = []
 
@@ -342,18 +363,49 @@ def summarize_activities(activities):
         type_key = activity.get("activityType", {}).get("typeKey")
         discipline = classify_activity_type(type_key)
 
+        average_power = get_first_available(
+            activity,
+            [
+                "averagePower",
+                "avgPower",
+                "averageBikePower",
+                "avgBikePower"
+            ]
+        )
+
+        normalized_power = get_first_available(
+            activity,
+            [
+                "normalizedPower",
+                "normPower",
+                "np"
+            ]
+        )
+
+        max_power = get_first_available(
+            activity,
+            [
+                "maxPower",
+                "maxBikePower"
+            ]
+        )
+
         item = {
             "name": activity.get("activityName"),
             "type_key": type_key,
             "discipline": discipline,
             "datetime": activity_time,
             "date": activity_time.strftime("%Y-%m-%d") if activity_time else None,
+            "iso_week": activity_time.strftime("%G-W%V") if activity_time else None,
             "distance_m": safe_float(activity.get("distance")),
             "duration_sec": safe_float(activity.get("duration")),
             "average_hr": activity.get("averageHR"),
             "max_hr": activity.get("maxHR"),
             "aerobic_te": activity.get("aerobicTrainingEffect"),
             "anaerobic_te": activity.get("anaerobicTrainingEffect"),
+            "average_power": average_power,
+            "normalized_power": normalized_power,
+            "max_power": max_power,
             "hard": is_hard_session(activity)
         }
 
@@ -407,6 +459,12 @@ def summarize_activities(activities):
             default=None
         )
 
+        bike_power_values = [
+            safe_float(item["average_power"])
+            for item in filtered
+            if item["discipline"] == "bike" and item["average_power"] is not None
+        ]
+
         return {
             "total_sessions": len(filtered),
             "total_duration_h": round(sum(item["duration_sec"] for item in filtered) / 3600, 2),
@@ -414,6 +472,8 @@ def summarize_activities(activities):
             "training_days": len(training_dates),
             "rest_days_estimate": rest_days_estimate,
             "by_discipline": by_discipline,
+            "bike_avg_power_available_sessions": len(bike_power_values),
+            "bike_avg_power_mean": round(sum(bike_power_values) / len(bike_power_values), 1) if bike_power_values else None,
             "longest_bike": {
                 "date": longest_bike["date"],
                 "duration": format_duration(longest_bike["duration_sec"]),
@@ -443,6 +503,8 @@ def summarize_activities(activities):
             "avg_hr": item["average_hr"],
             "aerobic_te": item["aerobic_te"],
             "anaerobic_te": item["anaerobic_te"],
+            "avg_power": item["average_power"],
+            "normalized_power": item["normalized_power"],
             "hard": item["hard"]
         })
 
@@ -455,13 +517,20 @@ def summarize_activities(activities):
         "activities_with_training_effect": len([
             item for item in structured
             if item["aerobic_te"] is not None or item["anaerobic_te"] is not None
+        ]),
+        "bike_activities_with_power": len([
+            item for item in structured
+            if item["discipline"] == "bike" and item["average_power"] is not None
         ])
     }
+
+    condition_evolution = build_condition_evolution(structured, cutoff_analysis)
 
     return {
         "data_quality": data_quality,
         "last_7_days": summarize_since(cutoff_7, 7),
         "last_28_days": summarize_since(cutoff_28, 28),
+        "condition_evolution": condition_evolution,
         "latest_activity": {
             "date": latest["date"],
             "name": latest["name"],
@@ -471,9 +540,135 @@ def summarize_activities(activities):
             "avg_hr": latest["average_hr"],
             "aerobic_te": latest["aerobic_te"],
             "anaerobic_te": latest["anaerobic_te"],
+            "avg_power": latest["average_power"],
+            "normalized_power": latest["normalized_power"],
             "hard": latest["hard"]
         } if latest else None,
         "recent_activities": recent_activities
+    }
+
+
+def build_condition_evolution(structured, cutoff):
+    filtered = [
+        item for item in structured
+        if item["datetime"] and item["datetime"] >= cutoff
+    ]
+
+    weeks = {}
+
+    for item in filtered:
+        week = item["iso_week"] or "unknown"
+
+        if week not in weeks:
+            weeks[week] = {
+                "week": week,
+                "total_sessions": 0,
+                "total_duration_h": 0.0,
+                "hard_sessions": 0,
+                "bike_sessions": 0,
+                "bike_duration_h": 0.0,
+                "bike_distance_km": 0.0,
+                "run_sessions": 0,
+                "run_duration_h": 0.0,
+                "run_distance_km": 0.0,
+                "swim_sessions": 0,
+                "swim_duration_h": 0.0,
+                "bike_power_sessions": 0,
+                "bike_avg_power_sum": 0.0,
+                "bike_avg_hr_sessions": 0,
+                "bike_avg_hr_sum": 0.0
+            }
+
+        weeks[week]["total_sessions"] += 1
+        weeks[week]["total_duration_h"] += item["duration_sec"] / 3600
+
+        if item["hard"]:
+            weeks[week]["hard_sessions"] += 1
+
+        if item["discipline"] == "bike":
+            weeks[week]["bike_sessions"] += 1
+            weeks[week]["bike_duration_h"] += item["duration_sec"] / 3600
+            weeks[week]["bike_distance_km"] += item["distance_m"] / 1000
+
+            if item["average_power"] is not None:
+                weeks[week]["bike_power_sessions"] += 1
+                weeks[week]["bike_avg_power_sum"] += safe_float(item["average_power"])
+
+            if item["average_hr"] is not None:
+                weeks[week]["bike_avg_hr_sessions"] += 1
+                weeks[week]["bike_avg_hr_sum"] += safe_float(item["average_hr"])
+
+        if item["discipline"] == "run":
+            weeks[week]["run_sessions"] += 1
+            weeks[week]["run_duration_h"] += item["duration_sec"] / 3600
+            weeks[week]["run_distance_km"] += item["distance_m"] / 1000
+
+        if item["discipline"] == "swim":
+            weeks[week]["swim_sessions"] += 1
+            weeks[week]["swim_duration_h"] += item["duration_sec"] / 3600
+
+    weekly_trends = []
+
+    for week in sorted(weeks.keys()):
+        row = weeks[week]
+
+        bike_avg_power = None
+        if row["bike_power_sessions"] > 0:
+            bike_avg_power = round(row["bike_avg_power_sum"] / row["bike_power_sessions"], 1)
+
+        bike_avg_hr = None
+        if row["bike_avg_hr_sessions"] > 0:
+            bike_avg_hr = round(row["bike_avg_hr_sum"] / row["bike_avg_hr_sessions"], 1)
+
+        weekly_trends.append({
+            "week": row["week"],
+            "total_sessions": row["total_sessions"],
+            "total_duration_h": round(row["total_duration_h"], 2),
+            "hard_sessions": row["hard_sessions"],
+            "bike_sessions": row["bike_sessions"],
+            "bike_duration_h": round(row["bike_duration_h"], 2),
+            "bike_distance_km": round(row["bike_distance_km"], 1),
+            "bike_avg_power": bike_avg_power,
+            "bike_avg_hr": bike_avg_hr,
+            "run_sessions": row["run_sessions"],
+            "run_duration_h": round(row["run_duration_h"], 2),
+            "run_distance_km": round(row["run_distance_km"], 1),
+            "swim_sessions": row["swim_sessions"],
+            "swim_duration_h": round(row["swim_duration_h"], 2)
+        })
+
+    recent_weeks = weekly_trends[-4:]
+    previous_weeks = weekly_trends[-8:-4]
+
+    def avg(values):
+        clean = [value for value in values if value is not None]
+        if not clean:
+            return None
+        return round(sum(clean) / len(clean), 2)
+
+    comparison = {
+        "recent_4w_avg_total_duration_h": avg([w["total_duration_h"] for w in recent_weeks]),
+        "previous_4w_avg_total_duration_h": avg([w["total_duration_h"] for w in previous_weeks]),
+        "recent_4w_avg_bike_duration_h": avg([w["bike_duration_h"] for w in recent_weeks]),
+        "previous_4w_avg_bike_duration_h": avg([w["bike_duration_h"] for w in previous_weeks]),
+        "recent_4w_avg_hard_sessions": avg([w["hard_sessions"] for w in recent_weeks]),
+        "previous_4w_avg_hard_sessions": avg([w["hard_sessions"] for w in previous_weeks]),
+        "recent_4w_avg_bike_power": avg([w["bike_avg_power"] for w in recent_weeks]),
+        "previous_4w_avg_bike_power": avg([w["bike_avg_power"] for w in previous_weeks])
+    }
+
+    return {
+        "analysis_period_days": safe_int(ANALYSEPERIODE_DAGEN, 90),
+        "athlete_inputs": {
+            "powerdata": POWERDATA,
+            "ftp": FTP,
+            "max_hr": MAX_HR,
+            "rust_hr": RUST_HR,
+            "gewicht": GEWICHT,
+            "focus": FOCUS_CONDITIEANALYSE
+        },
+        "weekly_trends": weekly_trends,
+        "comparison_recent_vs_previous": comparison
     }
 
 
@@ -788,6 +983,15 @@ def build_coach_context(summary, sleep_info, weather, phase, races, recovery):
         "weekday": now_be().strftime("%A"),
         "mode": MODUS,
         "athlete_profile": ATHLETE_PROFILE,
+        "athlete_condition_inputs": {
+            "analysis_period_days": ANALYSEPERIODE_DAGEN,
+            "powerdata": POWERDATA,
+            "ftp": FTP,
+            "max_hr": MAX_HR,
+            "rust_hr": RUST_HR,
+            "gewicht": GEWICHT,
+            "focus_conditieanalyse": FOCUS_CONDITIEANALYSE
+        },
         "upcoming_races": races,
         "current_training_phase": phase,
         "recovery_risk": recovery,
@@ -821,26 +1025,207 @@ Maak een compact weekschema vanaf vandaag tot en met zondag.
 Focus op fietsvorm, frisheid en koersspecifieke prikkels.
 Geef per dag maximaal een hoofdtraining.
 De week mag geen triatlon-focus krijgen.
+
+Neem mee:
+- herstelstatus
+- belasting laatste 7 dagen
+- laatste workout indien relevant
+- eerstvolgende wedstrijd
+- wanneer intensiteit wel of niet logisch is
 """
-    elif MODUS == "workout_feedback":
-        output_instruction = """
-Analyseer vooral de meest recente activiteit.
-Leg uit wat deze training betekent voor de fietsvoorbereiding en wat morgen verstandig is.
+        output_structure = """
+OUTPUTSTRUCTUUR:
+
+COACH TAKE
+Een korte alinea van 2 tot 4 zinnen. Zeg waar de week om draait.
+
+HERSTELSTATUS
+- Recovery risk: laag, medium of hoog
+- Geef 2 tot 4 concrete redenen waarom dit level geldt.
+
+WEEKDOEL
+Leg in 2 tot 4 zinnen uit wat deze week moet opleveren.
+
+WEEKSCHEMA
+Geef per dag maximaal één hoofdtraining.
+Per dag:
+- type dag
+- training of rust
+- duur
+- intensiteit
+- aandachtspunt
+
+NIET DOEN DEZE WEEK
+Geef 3 tot 5 praktische zaken die de vorm richting de wielerwedstrijden kunnen schaden.
+
+WEDSTRIJDFOCUS
+Leg kort de link met Haasdonk, Sombeke, Atomse Pijl Denderhoutem en Triatlon Donkmeer.
 """
+
     elif MODUS == "race_readiness":
         output_instruction = """
 Geef een race-readiness check voor de eerstvolgende wielerwedstrijd.
 Focus op frisheid, scherpte, risico's en de laatste 72 uur.
+
+Neem mee:
+- recovery risk en concrete reden
+- laatste training
+- wat nog wel doen
+- wat absoluut niet meer doen
+- warming-up focus
+- koersfocus
 """
-    elif MODUS == "herstel_check":
+        output_structure = """
+OUTPUTSTRUCTUUR:
+
+COACH TAKE
+Een korte alinea van 2 tot 4 zinnen. Zeg scherp of de atleet vooral moet rusten, aanscherpen of gewoon vertrouwen houden.
+
+READINESS
+- Geef een nuchtere inschatting: goed, oké met marge, of voorzichtig.
+- Geen percentages verzinnen.
+
+HERSTELSTATUS
+- Recovery risk: laag, medium of hoog
+- Geef 2 tot 4 concrete redenen waarom dit level geldt.
+
+LAATSTE 72 UUR
+Geef concreet wat nog wel en niet moet gebeuren.
+
+WARMING-UP
+Geef een korte, praktische warming-up.
+
+KOERSFOCUS
+Geef 3 tot 5 koersgerichte aandachtspunten.
+
+NIET DOEN
+Geef 3 tot 5 zaken die nu niet slim zijn.
+"""
+
+    elif MODUS == "conditie_evolutie":
         output_instruction = """
-Geef een hersteladvies.
-Focus op slaap, vermoeidheid, pijnsignalen en wat absoluut niet te doen.
+Maak een grote conditieanalyse over de opgegeven analyseperiode.
+Focus op evolutie in tijd, niet op alleen vandaag.
+Het doel is begrijpen of de atleet sterker, stabieler of vermoeider wordt richting de wielerwedstrijden.
+
+Neem mee:
+- weektrends uit de Garmin-data
+- fietsvolume
+- intensieve sessies
+- koerspunch
+- herstelbalans
+- loop- en triatlonbelasting
+- beschikbare powerdata indien aanwezig
+- beperkingen in de data
 """
+        output_structure = """
+OUTPUTSTRUCTUUR:
+
+SAMENVATTING
+Geef in 4 tot 6 bullets de grote lijn:
+- conditie stijgend, stabiel of dalend
+- fietsvorm
+- herstel
+- belangrijkste risico richting de wedstrijden
+
+TREND IN TIJD
+Analyseer de evolutie per week of per blok.
+Gebruik concrete cijfers uit de context waar mogelijk.
+Verzin geen cijfers.
+
+FIETSVORM
+Bespreek:
+- volume
+- regelmaat
+- langste ritten
+- intensieve fietsprikkels
+- eventuele powerdata
+- of de trend logisch is richting Haasdonk en Sombeke
+
+KOERSPUNCH
+Bespreek of er genoeg korte, intensieve of koersspecifieke prikkels zichtbaar zijn.
+Als de data dit niet goed toont, zeg dat expliciet.
+
+HERSTELBALANS
+Bespreek:
+- recovery risk
+- slaapdata indien beschikbaar
+- rustdagen
+- intensieve sessies
+- tekenen van opstapelende vermoeidheid
+
+TRIATLONBELASTING
+Leg uit of zwemmen en lopen helpen, neutraal zijn of de fietsfocus kunnen verstoren.
+
+WAT BEHOUDEN
+Geef 3 tot 5 concrete zaken die goed lopen.
+
+WAT AANPASSEN
+Geef 3 tot 5 concrete aanpassingen richting de wielerwedstrijden.
+
+CONCLUSIE VOOR DE KOMENDE 2 WEKEN
+Geef een korte coachende conclusie.
+"""
+
     else:
         output_instruction = """
 Geef een dagadvies voor vandaag en een target voor morgen.
-Focus op fietsontwikkeling en frisheid richting de wielerwedstrijden.
+Deze modus combineert dagadvies, herstelcheck en korte feedback op de laatste workout.
+
+Neem mee:
+- recovery risk en concrete reden
+- korte feedback op de meest recente Garmin-activiteit
+- training vandaag of rust
+- target voor morgen
+- wat vandaag niet slim is
+- link met de wielerwedstrijden
+"""
+        output_structure = """
+OUTPUTSTRUCTUUR:
+
+COACH TAKE
+Een korte alinea van 2 tot 4 zinnen. Menselijk, direct en bruikbaar.
+Zeg meteen wat vandaag de bedoeling is.
+
+TYPE DAG
+Kies 1 label:
+- Rustdag
+- Hersteldag
+- Duurdag
+- Koersprikkel
+- Openers
+- Race day
+- Evaluatiedag
+
+HERSTELSTATUS
+- Recovery risk: laag, medium of hoog
+- Geef 2 tot 4 concrete redenen waarom dit level geldt.
+- Gebruik de redenen uit de context. Verzin niets bij.
+
+LAATSTE WORKOUT
+- Geef alleen een korte interpretatie als de laatste Garmin-activiteit relevant is.
+- Maximaal 3 bullets.
+- Leg uit of dit eerder een goede prikkel, onderhoud, herstel of mogelijke vermoeidheidsfactor was.
+
+VANDAAG
+- Exacte training of rust
+- Duur
+- Intensiteit
+- Concrete uitvoering in stappen
+- Wanneer afbreken of afschalen
+
+WAAROM
+Leg kort uit waarom deze training vandaag logisch is richting de wielerwedstrijden.
+
+MORGEN
+Geef een target voor morgen. Hou het kort.
+
+NIET DOEN
+Geef 2 tot 4 concrete dingen die vandaag niet slim zijn.
+Maak dit praktisch, niet generiek.
+
+WEDSTRIJDFOCUS
+Leg in 2 tot 4 zinnen de link met Haasdonk, Sombeke, Atomse Pijl Denderhoutem en Triatlon Donkmeer.
 """
 
     prompt = f"""
@@ -868,6 +1253,7 @@ Belangrijk:
 - Maximaal een hoofdtraining per dag.
 - Lopen is ondergeschikt aan fietsfrisheid.
 - Zwemmen mag vooral herstel of techniek zijn.
+- De laatste workout mag benoemd worden, maar maak er geen aparte lange analyse van tenzij die duidelijk relevant is.
 - Respecteer expliciet de prioriteit van de wedstrijden:
   1. Haasdonk: A-wedstrijd
   2. Sombeke: A-wedstrijd
@@ -887,49 +1273,10 @@ Gebruik liever coachtaal zoals:
 - geen extra loopje toevoegen
 - niet van deze sessie een test maken
 
-OUTPUTSTRUCTUUR:
-
-COACH TAKE
-Een korte alinea van 2 tot 4 zinnen. Menselijk, direct en bruikbaar.
-Zeg meteen wat vandaag de bedoeling is.
-
-TYPE DAG
-Kies 1 label:
-- Rustdag
-- Hersteldag
-- Duurdag
-- Koersprikkel
-- Openers
-- Race day
-- Evaluatiedag
-
-HERSTELSTATUS
-- Recovery risk: laag, medium of hoog
-- Geef 2 tot 4 concrete redenen waarom dit level geldt.
-- Gebruik de redenen uit de context. Verzin niets bij.
-
-VANDAAG
-- Exacte training of rust
-- Duur
-- Intensiteit
-- Concrete uitvoering in stappen
-- Wanneer afbreken of afschalen
-
-WAAROM
-Leg kort uit waarom deze training vandaag logisch is richting de wielerwedstrijden.
-
-MORGEN
-Geef een target voor morgen. Hou het kort.
-
-NIET DOEN
-Geef 2 tot 4 concrete dingen die vandaag niet slim zijn.
-Maak dit praktisch, niet generiek.
-
-WEDSTRIJDFOCUS
-Leg in 2 tot 4 zinnen de link met Haasdonk, Sombeke, Atomse Pijl Denderhoutem en Triatlon Donkmeer.
-
 Specifieke opdracht voor deze run:
 {output_instruction}
+
+{output_structure}
 
 Context in JSON:
 {json.dumps(context, ensure_ascii=False, indent=2)}
@@ -1002,14 +1349,11 @@ def subject_for_mode(context):
     if MODUS == "week_schema":
         return f"Wielercoach - weekschema richting {race_part}"
 
-    if MODUS == "workout_feedback":
-        return f"Wielercoach - workout feedback richting {race_part}"
-
     if MODUS == "race_readiness":
         return f"Wielercoach - race readiness richting {race_part}"
 
-    if MODUS == "herstel_check":
-        return f"Wielercoach - herstelcheck richting {race_part}"
+    if MODUS == "conditie_evolutie":
+        return f"Wielercoach - conditie-evolutie laatste {safe_int(ANALYSEPERIODE_DAGEN, 90)} dagen"
 
     return f"Wielercoach - dagadvies richting {race_part}"
 
@@ -1046,7 +1390,8 @@ def main():
 
     print("[STAP 2] Garmin activiteiten ophalen")
 
-    activities = garmin.get_activities(0, 60)
+    activities_to_fetch = 200 if MODUS == "conditie_evolutie" else 80
+    activities = garmin.get_activities(0, activities_to_fetch)
 
     if not activities:
         raise Exception("Geen Garmin activiteiten gevonden.")
@@ -1105,9 +1450,16 @@ Waarom dit recovery risk level:
 
 Weerbron: {weather.get("source")} - {weather.get("status")}
 Modus: {MODUS}
+Analyseperiode conditie: {safe_int(ANALYSEPERIODE_DAGEN, 90)} dagen
+Powerdata input: {POWERDATA}
+FTP input: {FTP}
+Max HR input: {MAX_HR}
+Rust-HR input: {RUST_HR}
+Gewicht input: {GEWICHT} kg
 Garmin activiteiten geladen: {summary.get("data_quality", {}).get("activities_loaded")}
 Activiteiten met hartslag: {summary.get("data_quality", {}).get("activities_with_hr")}
 Activiteiten met Training Effect: {summary.get("data_quality", {}).get("activities_with_training_effect")}
+Fietsactiviteiten met power: {summary.get("data_quality", {}).get("bike_activities_with_power")}
 """
 
     final_text = ai_text.strip() + technical_footer
