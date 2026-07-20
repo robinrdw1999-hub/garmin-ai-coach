@@ -7,64 +7,67 @@ on:
     - cron: '30 4 * * *'
 
   workflow_dispatch:
-    inputs*
+    inputs:
       modus:
-        description:*'Analyse type'
-        required: t*ue
+        description: 'Analyse type'
+        required: true
         default: 'dagadvies'
-  *     type: choice
-        options:*          - dagadvies
-          - *eek_schema
-          - workout_fee*back
+        type: choice
+        options:
+          - dagadvies
+          - week_schema
+          - workout_feedback
           - race_readiness
-  *       - herstel_check
+          - herstel_check
 
-      feed*ack:
-        description: 'Subject*eve feedback: vermoeidheid, pijn, *enen, motivatie, slaapgevoel'
-    *   required: false
-        default* 'Geen actuele subjectieve feedbac* opgegeven.'
-        type: string
-*      extra_context:
-        descr*ption: 'Extra context, bv. weinig *ijd, materiaal, avondwedstrijd, re*sdag'
+      feedback:
+        description: 'Subjectieve feedback: vermoeidheid, pijn, benen, motivatie, slaapgevoel'
         required: false
-    *   default: ''
-        type: strin*
+        default: 'Geen actuele subjectieve feedback opgegeven.'
+        type: string
+
+      extra_context:
+        description: 'Extra context, bv. weinig tijd, materiaal, avondwedstrijd, reisdag'
+        required: false
+        default: ''
+        type: string
 
 jobs:
   run-coach:
-    runs-on: *buntu-latest
+    runs-on: ubuntu-latest
 
     steps:
-      - u*es: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - u*es: actions/setup-python@v5
-      * with:
-          python-version: '*.11'
-
-      - name: Cache Garmin t*kens
-        uses: actions/cache@v*
+      - uses: actions/setup-python@v5
         with:
-          path: ~/.*arminconnect
-          key: garmin*tokens-v2-${{ runner.os }}
-       *  restore-keys: |
-            garm*n-tokens-v2-
+          python-version: '3.11'
 
-      - name: Instal*eer dependencies
-        run: pip *nstall garminconnect google-genai *roq
+      - name: Cache Garmin tokens
+        uses: actions/cache@v4
+        with:
+          path: ~/.garminconnect
+          key: garmin-tokens-v2-${{ runner.os }}
+          restore-keys: |
+            garmin-tokens-v2-
+
+      - name: Installeer dependencies
+        run: pip install garminconnect google-genai groq
 
       - name: Run Coach
-     *  env:
-          GITHUB_EVENT_NAME* ${{ github.event_name }}
-        * CHOSEN_MODUS: ${{ github.event.in*uts.modus }}
-          USER_FEEDBA*K: ${{ github.event.inputs.feedbac* }}
-          EXTRA_CONTEXT: ${{ g*thub.event.inputs.extra_context }}*
-          GARMIN_EMAIL: ${{ secre*s.GARMIN_EMAIL }}
-          GARMIN*WACHTWOORD: ${{ secrets.GARMIN_WAC*TWOORD }}
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          CHOSEN_MODUS: ${{ github.event.inputs.modus }}
+          USER_FEEDBACK: ${{ github.event.inputs.feedback }}
+          EXTRA_CONTEXT: ${{ github.event.inputs.extra_context }}
 
-          GEMINI_API_KE*: ${{ secrets.GEMINI_API_KEY }}
-  *       GROQ_API_KEY: ${{ secrets.G*OQ_API_KEY }}
+          GARMIN_EMAIL: ${{ secrets.GARMIN_EMAIL }}
+          GARMIN_WACHTWOORD: ${{ secrets.GARMIN_WACHTWOORD }}
 
-          GMAIL_ADR*S: ${{ secrets.GMAIL_ADRES }}
-    *     GMAIL_APP_WACHTWOORD: ${{ sec*ets.GMAIL_APP_WACHTWOORD }}
-      *   EMAIL_ONTVANGER: ${{ secrets.EM*IL_ONTVANGER }}
-        run: pytho* coach.py
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+
+          GMAIL_ADRES: ${{ secrets.GMAIL_ADRES }}
+          GMAIL_APP_WACHTWOORD: ${{ secrets.GMAIL_APP_WACHTWOORD }}
+          EMAIL_ONTVANGER: ${{ secrets.EMAIL_ONTVANGER }}
+        run: python coach.py
