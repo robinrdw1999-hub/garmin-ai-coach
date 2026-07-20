@@ -1,58 +1,70 @@
-name: Dagelijkse Garmin AI Triatlon Coach
+name: Dagelijkse Garmin AI Wielercoach
 
 on:
   schedule:
-    - cron: '0 6 * * *' # Draait nu automatisch elke ochtend om 06:00
+    # GitHub cron draait in UTC.
+    # 04:30 UTC is 06:30 in Belgische zomertijd.
+    - cron: '30 4 * * *'
+
   workflow_dispatch:
-    inputs:
+    inputs*
       modus:
-        description: 'Analyse type'
-        required: true
-        default: 'week_schema'
-        type: choice
-        options: ['week_schema', 'triatlon_kansen_checker']
-      feedback:
-        description: 'Jouw feedback (hoe voel je je, specifieke pijntjes, workout feedback)'
-        required: false
-        default: 'Ik voel me fit en klaar voor de triatlonprikkels.'
+        description:*'Analyse type'
+        required: t*ue
+        default: 'dagadvies'
+  *     type: choice
+        options:*          - dagadvies
+          - *eek_schema
+          - workout_fee*back
+          - race_readiness
+  *       - herstel_check
+
+      feed*ack:
+        description: 'Subject*eve feedback: vermoeidheid, pijn, *enen, motivatie, slaapgevoel'
+    *   required: false
+        default* 'Geen actuele subjectieve feedbac* opgegeven.'
         type: string
-      weer:
-        description: 'Weersvoorspelling voor de komende dagen'
+*      extra_context:
+        descr*ption: 'Extra context, bv. weinig *ijd, materiaal, avondwedstrijd, re*sdag'
         required: false
-        default: 'Typisch Belgisch zomerweer, rond de 21-24 graden met kans op een bui.'
-        type: string
+    *   default: ''
+        type: strin*
 
 jobs:
   run-coach:
-    runs-on: ubuntu-latest
+    runs-on: *buntu-latest
+
     steps:
-    - uses: actions/checkout@v4
-    
-    - uses: actions/setup-python@v5
-      with:
-        python-version: '3.10'
+      - u*es: actions/checkout@v4
 
-    - name: Cache Garmin tokens
-      uses: actions/cache@v4
-      with:
-        path: ~/.garminconnect
-        key: garmin-tokens-${{ github.run_id }}
-        restore-keys: |
-          garmin-tokens-
+      - u*es: actions/setup-python@v5
+      * with:
+          python-version: '*.11'
 
-    - name: Installeer dependencies
-      run: pip install garminconnect google-genai
+      - name: Cache Garmin t*kens
+        uses: actions/cache@v*
+        with:
+          path: ~/.*arminconnect
+          key: garmin*tokens-v2-${{ runner.os }}
+       *  restore-keys: |
+            garm*n-tokens-v2-
 
-    - name: Run Coach
-      env:
-        GITHUB_EVENT_NAME: ${{ github.event_name }}
-        CHOSEN_MODUS: ${{ github.event.inputs.modus }}
-        USER_FEEDBACK: ${{ github.event.inputs.feedback }}
-        WEATHER_FORECAST: ${{ github.event.inputs.weer }}
-        GARMIN_EMAIL: ${{ secrets.GARMIN_EMAIL }}
-        GARMIN_WACHTWOORD: ${{ secrets.GARMIN_WACHTWOORD }}
-        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        GMAIL_ADRES: ${{ secrets.GMAIL_ADRES }}
-        GMAIL_APP_WACHTWOORD: ${{ secrets.GMAIL_APP_WACHTWOORD }}
-        EMAIL_ONTVANGER: ${{ secrets.EMAIL_ONTVANGER }}
-      run: python coach.py
+      - name: Instal*eer dependencies
+        run: pip *nstall garminconnect google-genai *roq
+
+      - name: Run Coach
+     *  env:
+          GITHUB_EVENT_NAME* ${{ github.event_name }}
+        * CHOSEN_MODUS: ${{ github.event.in*uts.modus }}
+          USER_FEEDBA*K: ${{ github.event.inputs.feedbac* }}
+          EXTRA_CONTEXT: ${{ g*thub.event.inputs.extra_context }}*
+          GARMIN_EMAIL: ${{ secre*s.GARMIN_EMAIL }}
+          GARMIN*WACHTWOORD: ${{ secrets.GARMIN_WAC*TWOORD }}
+
+          GEMINI_API_KE*: ${{ secrets.GEMINI_API_KEY }}
+  *       GROQ_API_KEY: ${{ secrets.G*OQ_API_KEY }}
+
+          GMAIL_ADR*S: ${{ secrets.GMAIL_ADRES }}
+    *     GMAIL_APP_WACHTWOORD: ${{ sec*ets.GMAIL_APP_WACHTWOORD }}
+      *   EMAIL_ONTVANGER: ${{ secrets.EM*IL_ONTVANGER }}
+        run: pytho* coach.py
