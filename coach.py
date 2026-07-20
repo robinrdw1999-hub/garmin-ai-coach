@@ -33,13 +33,9 @@ EXTRA_CONTEXT = os.environ.get("EXTRA_CONTEXT") or ""
 
 MODUS = "dagadvies" if EVENT_NAME == "schedule" else GEKOZEN_MODUS
 
-ANALYSEPERIODE_DAGEN = os.environ.get("ANALYSEPERIODE_DAGEN") or "90"
-POWERDATA = os.environ.get("POWERDATA") or "soms"
-FTP = os.environ.get("FTP") or "onbekend"
-MAX_HR = os.environ.get("MAX_HR") or "onbekend"
-RUST_HR = os.environ.get("RUST_HR") or "onbekend"
-GEWICHT = os.environ.get("GEWICHT") or "72"
-FOCUS_CONDITIEANALYSE = os.environ.get("FOCUS_CONDITIEANALYSE") or "wielervorm, koerspunch en herstel"
+ANALYSEPERIODE_DAGEN = "90"
+GEWICHT = "72"
+FOCUS_CONDITIEANALYSE = "wielervorm, koerspunch en herstel"
 
 WEATHER_LAT = 51.03
 WEATHER_LON = 4.10
@@ -98,6 +94,8 @@ def safe_float(value, default=0.0):
             return default
         if str(value).lower() == "onbekend":
             return default
+        if str(value).lower() == "niet gevonden":
+            return default
         return float(value)
     except Exception:
         return default
@@ -108,6 +106,8 @@ def safe_int(value, default=0):
         if value is None:
             return default
         if str(value).lower() == "onbekend":
+            return default
+        if str(value).lower() == "niet gevonden":
             return default
         return int(float(value))
     except Exception:
@@ -347,6 +347,256 @@ def get_weather_forecast():
             "error": str(error),
             "forecast": []
         }
+
+
+def detect_athlete_metrics(garmin, activities):
+    result = {
+        "ftp": None,
+        "ftp_source": None,
+        "resting_hr": None,
+        "resting_hr_source": None,
+        "max_hr": None,
+        "max_hr_source": None,
+        "powerdata": "niet gevonden",
+        "power_sessions_detected": 0,
+        "weight_kg": GEWICHT
+    }
+
+    today = now_be().date()
+    dates_to_try = [
+        today,
+        today - timedelta(days=1),
+        today - timedelta(days=2),
+        today - timedelta(days=3),
+        today - timedelta(days=4),
+        today - timedelta(days=5),
+        today - timedelta(days=6)
+    ]
+
+    for day in dates_to_try:
+        day_string = day.strftime("%Y-%m-%d")
+
+        if result["resting_hr"] is None:
+            try:
+                if hasattr(garmin, "get_user_summary"):
+                    summary = garmin.get_user_summary(day_string)
+                    resting = recursive_find(
+                        summary,
+                        [
+                            "restingHeartRate",
+                            "restingHR",
+                            "restingHr",
+                            "minHeartRate"
+                        ]
+                    )
+
+                    if resting is not None:
+                        resting_int = safe_int(resting, default=0)
+                        if resting_int > 0:
+                            result["resting_hr"] = resting_int
+                            result["resting_hr_source"] = f"Garmin user summary {day_string}"
+            except Exception:
+                pass
+
+        if result["resting_hr"] is None:
+            try:
+                if hasattr(garmin, "get_heart_rates"):
+                    hr_data = garmin.get_heart_rates(day_string)
+                    resting = recursive_find(
+                        hr_data,
+                        [
+                            "restingHeartRate",
+                            "restingHR",
+                            "restingHr",
+                            "minHeartRate"
+                        ]
+                    )
+
+                    if resting is not None:
+                        resting_int = safe_int(resting, default=0)
+                        if resting_int > 0:
+                            result["resting_hr"] = resting_int
+                            result["resting_hr_source"] = f"Garmin heart rate data {day_string}"
+            except Exception:
+                pass
+
+    possible_profile_methods = [
+        "get_user_profile",
+        "get_user_settings"
+    ]
+
+    profile_payloads = []
+
+    for method_name in possible_profile_methods:
+        try:
+            if hasattr(garmin, method_name):
+                method = getattr(garmin, method_name)
+                payload = method()
+
+                if payload:
+                    profile_payloads.append({
+                        "method": method_name,
+                        "payload": payload
+                    })
+        except Exception:
+            pass
+
+    for item in profile_payloads:
+        payload = item["payload"]
+        method_name = item["method"]
+
+        if result["ftp"] is None:
+            ftp_value = recursive_find(
+                payload,
+                [
+                    "functionalThresholdPower",
+                    "ftp",
+                    "cyclingFtp",
+                    "bikeFtp",
+                    "thresholdPower"
+                ]
+            )
+
+            if ftp_value is not None:
+                ftp_int = safe_int(ftp_value, default=0)
+                if ftp_int > 0:
+                    result["ftp"] = ftp_int
+                    result["ftp_source"] = method_name
+
+        if result["max_hr"] is None:
+            max_hr_value = recursive_find(
+                payload,
+                [
+                    "maxHeartRate",
+                    "maximumHeartRate",
+                    "maxHR",
+                    "maxHr"
+                ]
+            )
+
+            if max_hr_value is not None:
+                max_hr_int = safe_int(max_hr_value, default=0)
+                if max_hr_int > 0:
+                    result["max_hr"] = max_hr_int
+                    result["max_hr_source"] = method_name
+
+    max_hr_values = []
+    power_sessions = 0
+
+    for activity in activities:
+        type_key = activity.get("activityType", {}).get("typeKey")
+        discipline = classify_activity_type(type_key)
+
+        if activity.get("maxHR") is not None:
+            max_hr_values.append(safe_int(activity.get("maxHR")))
+
+        if discipline == "bike":
+            avg_power = get_first_available(
+                activity,
+                [
+                    "averagePower",
+                    "avgPower",
+                    "averageBikePower",
+                    "avgBikePower"
+                ]
+            )
+
+            normalized_power = get_first_available(
+                activity,
+                [
+                    "normalizedPower",
+                    "normPower",
+                    "np"
+                ]
+            )
+
+            if avg_power is not None or normalized_power is not None:
+                power_sessions += 1
+
+            if result["ftp"] is None:
+                ftp_value = recursive_find(
+                    activity,
+                    [
+                        "functionalThresholdPower",
+                        "ftp",
+                        "cyclingFtp",
+                        "bikeFtp",
+                        "thresholdPower"
+                    ]
+                )
+
+                if ftp_value is not None:
+                    ftp_int = safe_int(ftp_value, default=0)
+                    if ftp_int > 0:
+                        result["ftp"] = ftp_int
+                        result["ftp_source"] = "Garmin activity list"
+
+    if result["ftp"] is None:
+        bike_activity_ids = []
+
+        for activity in activities[:30]:
+            type_key = activity.get("activityType", {}).get("typeKey")
+            discipline = classify_activity_type(type_key)
+
+            if discipline == "bike":
+                activity_id = activity.get("activityId")
+                if activity_id:
+                    bike_activity_ids.append(activity_id)
+
+        for activity_id in bike_activity_ids[:10]:
+            try:
+                if hasattr(garmin, "get_activity_details"):
+                    details = garmin.get_activity_details(activity_id)
+
+                    ftp_value = recursive_find(
+                        details,
+                        [
+                            "functionalThresholdPower",
+                            "ftp",
+                            "cyclingFtp",
+                            "bikeFtp",
+                            "thresholdPower"
+                        ]
+                    )
+
+                    if ftp_value is not None:
+                        ftp_int = safe_int(ftp_value, default=0)
+                        if ftp_int > 0:
+                            result["ftp"] = ftp_int
+                            result["ftp_source"] = f"Garmin activity details {activity_id}"
+                            break
+            except Exception:
+                pass
+
+    if result["max_hr"] is None and max_hr_values:
+        plausible_values = [
+            value for value in max_hr_values
+            if value and 120 <= value <= 220
+        ]
+
+        if plausible_values:
+            result["max_hr"] = max(plausible_values)
+            result["max_hr_source"] = "hoogste maxHR uit recente Garmin activiteiten"
+
+    result["power_sessions_detected"] = power_sessions
+
+    if power_sessions >= 5:
+        result["powerdata"] = "ja"
+    elif power_sessions > 0:
+        result["powerdata"] = "soms"
+    else:
+        result["powerdata"] = "nee of niet zichtbaar in Garmin activity list"
+
+    if result["ftp"] is None:
+        result["ftp"] = "niet gevonden"
+
+    if result["resting_hr"] is None:
+        result["resting_hr"] = "niet gevonden"
+
+    if result["max_hr"] is None:
+        result["max_hr"] = "niet gevonden"
+
+    return result
 
 
 def summarize_activities(activities):
@@ -660,10 +910,7 @@ def build_condition_evolution(structured, cutoff):
     return {
         "analysis_period_days": safe_int(ANALYSEPERIODE_DAGEN, 90),
         "athlete_inputs": {
-            "powerdata": POWERDATA,
-            "ftp": FTP,
-            "max_hr": MAX_HR,
-            "rust_hr": RUST_HR,
+            "metrics_source": "automatisch uit Garmin waar mogelijk",
             "gewicht": GEWICHT,
             "focus": FOCUS_CONDITIEANALYSE
         },
@@ -975,7 +1222,7 @@ def determine_recovery_risk(summary, sleep_info, user_feedback):
     }
 
 
-def build_coach_context(summary, sleep_info, weather, phase, races, recovery):
+def build_coach_context(summary, sleep_info, weather, phase, races, recovery, athlete_metrics):
     today = now_be().date()
 
     return {
@@ -985,11 +1232,16 @@ def build_coach_context(summary, sleep_info, weather, phase, races, recovery):
         "athlete_profile": ATHLETE_PROFILE,
         "athlete_condition_inputs": {
             "analysis_period_days": ANALYSEPERIODE_DAGEN,
-            "powerdata": POWERDATA,
-            "ftp": FTP,
-            "max_hr": MAX_HR,
-            "rust_hr": RUST_HR,
-            "gewicht": GEWICHT,
+            "metrics_source": "automatisch uit Garmin waar mogelijk",
+            "ftp": athlete_metrics.get("ftp"),
+            "ftp_source": athlete_metrics.get("ftp_source"),
+            "resting_hr": athlete_metrics.get("resting_hr"),
+            "resting_hr_source": athlete_metrics.get("resting_hr_source"),
+            "max_hr": athlete_metrics.get("max_hr"),
+            "max_hr_source": athlete_metrics.get("max_hr_source"),
+            "powerdata": athlete_metrics.get("powerdata"),
+            "power_sessions_detected": athlete_metrics.get("power_sessions_detected"),
+            "gewicht": athlete_metrics.get("weight_kg"),
             "focus_conditieanalyse": FOCUS_CONDITIEANALYSE
         },
         "upcoming_races": races,
@@ -1079,7 +1331,7 @@ Neem mee:
 OUTPUTSTRUCTUUR:
 
 COACH TAKE
-Een korte alinea van 2 tot 4 zinnen. Zeg scherp of de atleet vooral moet rusten, aanscherpen of gewoon vertrouwen houden.
+Een korte alinea van 2 tot 4 zinnen. Zeg scherp of de atleet vooral moet rusten, aanscherpen of vertrouwen houden.
 
 READINESS
 - Geef een nuchtere inschatting: goed, oké met marge, of voorzichtig.
@@ -1116,6 +1368,7 @@ Neem mee:
 - herstelbalans
 - loop- en triatlonbelasting
 - beschikbare powerdata indien aanwezig
+- automatisch gevonden FTP, rusthartslag en max HR indien beschikbaar
 - beperkingen in de data
 """
         output_structure = """
@@ -1140,6 +1393,7 @@ Bespreek:
 - langste ritten
 - intensieve fietsprikkels
 - eventuele powerdata
+- eventuele FTP indien gevonden
 - of de trend logisch is richting Haasdonk en Sombeke
 
 KOERSPUNCH
@@ -1150,6 +1404,7 @@ HERSTELBALANS
 Bespreek:
 - recovery risk
 - slaapdata indien beschikbaar
+- rusthartslag indien gevonden
 - rustdagen
 - intensieve sessies
 - tekenen van opstapelende vermoeidheid
@@ -1404,7 +1659,11 @@ def main():
 
     weather = get_weather_forecast()
 
-    print("[STAP 5] Activiteiten samenvatten")
+    print("[STAP 5] Atleetmetrics automatisch detecteren")
+
+    athlete_metrics = detect_athlete_metrics(garmin, activities)
+
+    print("[STAP 6] Activiteiten samenvatten")
 
     summary = summarize_activities(activities)
 
@@ -1419,14 +1678,15 @@ def main():
         weather=weather,
         phase=phase,
         races=races,
-        recovery=recovery
+        recovery=recovery,
+        athlete_metrics=athlete_metrics
     )
 
-    print("[STAP 6] Prompt bouwen")
+    print("[STAP 7] Prompt bouwen")
 
     prompt = build_prompt(context)
 
-    print("[STAP 7] AI advies genereren")
+    print("[STAP 8] AI advies genereren")
 
     ai_text = call_gemini(prompt)
 
@@ -1451,11 +1711,12 @@ Waarom dit recovery risk level:
 Weerbron: {weather.get("source")} - {weather.get("status")}
 Modus: {MODUS}
 Analyseperiode conditie: {safe_int(ANALYSEPERIODE_DAGEN, 90)} dagen
-Powerdata input: {POWERDATA}
-FTP input: {FTP}
-Max HR input: {MAX_HR}
-Rust-HR input: {RUST_HR}
-Gewicht input: {GEWICHT} kg
+Powerdata automatisch: {athlete_metrics.get("powerdata")}
+Power-sessies gevonden: {athlete_metrics.get("power_sessions_detected")}
+FTP automatisch: {athlete_metrics.get("ftp")} ({athlete_metrics.get("ftp_source")})
+Rusthartslag automatisch: {athlete_metrics.get("resting_hr")} ({athlete_metrics.get("resting_hr_source")})
+Max HR automatisch: {athlete_metrics.get("max_hr")} ({athlete_metrics.get("max_hr_source")})
+Gewicht ingesteld: {athlete_metrics.get("weight_kg")} kg
 Garmin activiteiten geladen: {summary.get("data_quality", {}).get("activities_loaded")}
 Activiteiten met hartslag: {summary.get("data_quality", {}).get("activities_with_hr")}
 Activiteiten met Training Effect: {summary.get("data_quality", {}).get("activities_with_training_effect")}
@@ -1464,7 +1725,7 @@ Fietsactiviteiten met power: {summary.get("data_quality", {}).get("bike_activiti
 
     final_text = ai_text.strip() + technical_footer
 
-    print("[STAP 8] Mail verzenden")
+    print("[STAP 9] Mail verzenden")
 
     subject = subject_for_mode(context)
 
