@@ -44,9 +44,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.garminconnect
-          key: garmin-tokens-v2-${{ runner.os }}
+          key: garmin-tokens-v3-${{ runner.os }}
           restore-keys: |
-            garmin-tokens-v2-
+            garmin-tokens-v3-
 
       - name: Installeer dependencies
         run: pip install garminconnect google-genai
