@@ -19,23 +19,23 @@ from google import genai
 
 TIMEZONE = ZoneInfo("Europe/Brussels")
 
-GARMIN_EMAIL = os.getenv("GARMIN_EMAIL")
-GARMIN_WACHTWOORD = os.getenv("GARMIN_WACHTWOORD")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GARMIN_EMAIL = os.environ.get("GARMIN_EMAIL")
+GARMIN_WACHTWOORD = os.environ.get("GARMIN_WACHTWOORD")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-GMAIL_ADRES = os.getenv("GMAIL_ADRES")
-GMAIL_APP_WACHTWOORD = os.getenv("GMAIL_APP_WACHTWOORD")
-EMAIL_ONTVANGER = os.getenv("EMAIL_ONTVANGER")
+GMAIL_ADRES = os.environ.get("GMAIL_ADRES")
+GMAIL_APP_WACHTWOORD = os.environ.get("GMAIL_APP_WACHTWOORD")
+EMAIL_ONTVANGER = os.environ.get("EMAIL_ONTVANGER")
 
-EVENT_NAME = os.getenv("GITHUB_EVENT_NAME", "manual")
-GEKOZEN_MODUS = os.getenv("CHOSEN_MODUS") or "dagadvies"
+EVENT_NAME = os.environ.get("GITHUB_EVENT_NAME", "manual")
+GEKOZEN_MODUS = os.environ.get("CHOSEN_MODUS") or "dagadvies"
 
 USER_FEEDBACK = (
-    os.getenv("USER_FEEDBACK")
+    os.environ.get("USER_FEEDBACK")
     or "Geen actuele subjectieve feedback opgegeven."
 )
 
-EXTRA_CONTEXT = os.getenv("EXTRA_CONTEXT") or ""
+EXTRA_CONTEXT = os.environ.get("EXTRA_CONTEXT") or ""
 
 MODUS = (
     "dagadvies"
@@ -54,22 +54,51 @@ SEASON_CONFIG = {
     "preparation_start": "2026-10-01",
     "race_season_start": "2027-05-01",
     "race_season_end": "2027-09-15",
+
+    "starting_level": (
+        "De atleet kan wielerwedstrijden uitrijden, "
+        "maar rijdt momenteel nog niet structureel mee voor de prijzen."
+    ),
+
+    "main_goal": (
+        "Van wedstrijden uitrijden doorgroeien naar competitief "
+        "meedoen voor de prijzen in criterium- en wegwedstrijden."
+    ),
+
+    "goal_type": (
+        "Ambitieus prestatiedoel. Geen gegarandeerde uitkomst."
+    ),
+
     "target_race_count_min": 12,
     "target_race_count_max": 16,
     "max_consecutive_race_weekends": 2,
     "target_a_races_min": 3,
     "target_a_races_max": 4,
+
     "discipline": "criterium- en wegwedstrijden",
-    "main_goal": "allround wielerprestatie ontwikkelen",
+
     "development_goals": [
         "gezond en consistent kunnen trainen",
         "aerobe basis en duurzaamheid verbeteren",
         "FTP en tijd tot uitputting rond drempel verbeteren",
-        "VO2max en herhaalde inspanningen boven drempel verbeteren",
-        "anaerobe capaciteit, acceleraties en sprint ontwikkelen",
-        "vermogen laat in een rit beter behouden",
-        "techniek, positionering, bochten en koersinzicht ontwikkelen",
+        "VO2max verhogen",
+        "herhaalde inspanningen boven drempel beter verwerken",
+        "anaerobe capaciteit ontwikkelen",
+        "acceleratievermogen verbeteren",
+        "sprintvermogen en sprint na vermoeidheid verbeteren",
+        "vermogen laat in een wedstrijd beter behouden",
+        "bochtentechniek en positionering verbeteren",
+        "koersinzicht en inspanningsverdeling ontwikkelen",
         "frisheid rond prioritaire wedstrijden bewaken"
+    ],
+
+    "success_indicators": [
+        "langer in het relevante wedstrijddeel van het peloton blijven",
+        "minder terrein verliezen na herhaalde acceleraties",
+        "later in de wedstrijd nog een hoge inspanning kunnen leveren",
+        "beter gepositioneerd aan de finale beginnen",
+        "regelmatig de finale van wedstrijden bereiken",
+        "in geselecteerde wedstrijden competitief voor een uitslag rijden"
     ]
 }
 
@@ -77,35 +106,136 @@ SEASON_CONFIG = {
 ATHLETE_PROFILE = {
     "weight_kg": GEWICHT,
     "primary_sport": "wielrennen",
+
     "main_objective": (
-        "De best mogelijke allround renner worden voor criterium- "
-        "en wegwedstrijden. FTP is belangrijk, maar is slechts "
-        "een bouwsteen."
+        "Van wedstrijden kunnen uitrijden doorgroeien naar "
+        "competitief meedoen voor de prijzen in criterium- "
+        "en wegwedstrijden. FTP is belangrijk, maar is "
+        "slechts één bouwsteen."
     ),
+
     "performance_hierarchy": [
         "gezondheid, continuïteit en herstelbaarheid",
         "aerobe basis en duurzaamheid",
         "FTP en drempelduur",
         "VO2max en herhaalde hoge intensiteit",
-        "anaerobe capaciteit, acceleratie en sprint",
-        "techniek en koersvaardigheid",
+        "anaerobe capaciteit en acceleratievermogen",
+        "sprintvermogen en sprint na vermoeidheid",
+        "techniek, positionering en koersvaardigheid",
         "wedstrijdspecifieke frisheid"
     ],
+
     "other_sports": (
-        "Alleen aanvullend en niet ten koste van fietskwaliteit "
-        "of herstel."
+        "Andere sporten zijn alleen aanvullend. Ze mogen "
+        "fietskwaliteit, herstel en trainingscontinuïteit "
+        "niet hinderen."
     ),
+
     "max_main_sessions_per_day": 1,
     "max_quality_sessions_per_week": 2,
+
     "default_block_structure": (
-        "Meestal drie opbouwweken en één herstelweek, "
-        "maar hersteldata gaan voor."
+        "Meestal drie progressieve opbouwweken en één "
+        "herstelweek. Hersteldata en subjectieve feedback "
+        "gaan altijd voor de kalender."
     ),
+
     "benchmark_frequency": (
         "Hoogstens om de zes tot acht weken, met hetzelfde "
         "protocol en dezelfde vermogensbron."
     ),
-    "tone": "nuchter, menselijk, direct en licht coachend"
+
+    "tone": (
+        "Nuchter, menselijk, direct, kritisch en licht coachend."
+    ),
+
+    "strength_training": {
+        "purpose": [
+            "maximale kracht en neuromusculaire capaciteit ontwikkelen",
+            "acceleratie en sprintvermogen ondersteunen",
+            "krachtverlies later in wedstrijden beperken",
+            "algemene robuustheid en belastbaarheid ondersteunen"
+        ],
+
+        "base_phase_frequency": (
+            "Meestal twee niet-opeenvolgende krachtsessies per week, "
+            "indien dit herstelbaar is."
+        ),
+
+        "build_phase_frequency": (
+            "Meestal één onderhoudssessie per week. Een tweede sessie "
+            "is alleen mogelijk bij lage fietsbelasting en goed herstel."
+        ),
+
+        "race_phase_frequency": (
+            "Eén korte onderhoudssessie per zeven tot tien dagen, "
+            "afhankelijk van wedstrijdkalender en herstel."
+        ),
+
+        "exercise_families": [
+            "squat- of split-squatpatroon",
+            "heupdominant patroon zoals deadlift, Romanian deadlift of hip hinge",
+            "unilaterale beenkracht zoals split squat of step-up",
+            "kuitkracht",
+            "rompstabiliteit en anti-rotatie",
+            "duw- en trekbewegingen voor algemene balans"
+        ],
+
+        "rules": [
+            "techniek gaat altijd voor belasting",
+            "geen maximale herhalingstest zonder competente begeleiding",
+            "geen trainen tot volledig spierfalen",
+            "krachttraining mag een belangrijke fietstraining niet ondermijnen",
+            "geen zware beentraining binnen 48 uur voor een prioritaire wedstrijd",
+            "verminder eerst het aantal sets voordat oefeningen volledig verdwijnen",
+            "verwachte spierpijn moet beperkt blijven"
+        ]
+    }
+}
+
+
+MONTH_PLAN_CONFIG = {
+    "default_weeks": 4,
+
+    "required_sections": [
+        "doel van de maand",
+        "primaire adaptatie",
+        "onderhoudsdoelen",
+        "fietsaccent per week",
+        "krachtaccent per week",
+        "herstelaccent",
+        "benchmark of evaluatie",
+        "voorwaarden voor bijsturing"
+    ],
+
+    "planning_rules": [
+        (
+            "Gebruik de maand die in extra_context wordt genoemd. "
+            "Als geen maand wordt genoemd, gebruik de huidige kalendermaand."
+        ),
+        (
+            "Een maandplan is een kader per week en geen volledig "
+            "dichtgetimmerd dagschema."
+        ),
+        (
+            "Als de maand vijf gedeeltelijke of volledige trainingsweken "
+            "bevat, voeg dan week 5 toe."
+        ),
+        (
+            "De zwaarste fiets- en krachtsessie mogen niet automatisch "
+            "op opeenvolgende dagen staan."
+        ),
+        (
+            "Plan per maand één primaire adaptatie en maximaal twee "
+            "duidelijke onderhoudsdoelen."
+        ),
+        (
+            "Een herstelweek verlaagt zowel fietsbelasting als krachtvolume."
+        ),
+        (
+            "Bij medium of hoog herstelrisico wordt het plan afgeschaald."
+        )
+    ]
 }
 
 
@@ -119,6 +249,14 @@ RACES = [
     #     "type": "cycling_race",
     #     "priority": "C",
     #     "note": "Vroege seizoenswedstrijd als koersprikkel."
+    # },
+    #
+    # {
+    #     "date": "2027-06-20",
+    #     "name": "Naam prioritaire wedstrijd",
+    #     "type": "cycling_race",
+    #     "priority": "A",
+    #     "note": "Prioritaire wedstrijd met gerichte taper."
     # }
 ]
 
@@ -349,15 +487,15 @@ def get_sleep_info(garmin):
         day_string = day.isoformat()
 
         try:
-            data = garmin.get_sleep_data(
+            sleep_data = garmin.get_sleep_data(
                 day_string
             )
 
-            if not data:
+            if not sleep_data:
                 continue
 
             score = recursive_find(
-                data,
+                sleep_data,
                 [
                     "sleepScore",
                     "overallSleepScore",
@@ -366,7 +504,7 @@ def get_sleep_info(garmin):
             )
 
             quality = recursive_find(
-                data,
+                sleep_data,
                 [
                     "qualityDescription",
                     "sleepScoreFeedback",
@@ -442,7 +580,7 @@ def get_weather_forecast():
         for index, day in enumerate(
             daily.get("time", [])
         ):
-            def value(key):
+            def get_daily_value(key):
                 values = daily.get(key, [])
 
                 if index < len(values):
@@ -452,16 +590,16 @@ def get_weather_forecast():
 
             forecast.append({
                 "date": day,
-                "temp_min_c": value(
+                "temp_min_c": get_daily_value(
                     "temperature_2m_min"
                 ),
-                "temp_max_c": value(
+                "temp_max_c": get_daily_value(
                     "temperature_2m_max"
                 ),
-                "rain_probability_pct": value(
+                "rain_probability_pct": get_daily_value(
                     "precipitation_probability_max"
                 ),
-                "max_wind_kmh": value(
+                "max_wind_kmh": get_daily_value(
                     "wind_speed_10m_max"
                 )
             })
@@ -631,16 +769,20 @@ def detect_athlete_metrics(
             ] += 1
 
     if result["max_hr"] is None:
-        plausible = [
+        plausible_values = [
             value
             for value in max_hr_values
             if 120 <= value <= 220
         ]
 
-        if plausible:
-            result["max_hr"] = max(plausible)
+        if plausible_values:
+            result["max_hr"] = max(
+                plausible_values
+            )
+
             result["max_hr_source"] = (
-                "recente activiteiten"
+                "hoogste plausibele waarde "
+                "uit recente activiteiten"
             )
 
     power_sessions = result[
@@ -666,8 +808,8 @@ def detect_athlete_metrics(
 
 
 def summarize_activities(activities):
-    current = now_be()
-    rows = []
+    current_time = now_be()
+    structured = []
 
     for activity in activities:
         activity_time = parse_garmin_datetime(
@@ -683,7 +825,7 @@ def summarize_activities(activities):
             type_key
         )
 
-        rows.append({
+        structured.append({
             "date": (
                 activity_time.date().isoformat()
                 if activity_time
@@ -733,9 +875,9 @@ def summarize_activities(activities):
             "hard": is_hard_session(activity)
         })
 
-    rows.sort(
-        key=lambda row: (
-            row["datetime"]
+    structured.sort(
+        key=lambda item: (
+            item["datetime"]
             or datetime.min.replace(
                 tzinfo=TIMEZONE
             )
@@ -745,22 +887,22 @@ def summarize_activities(activities):
 
     def summarize_window(days):
         cutoff = (
-            current
+            current_time
             - timedelta(days=days)
         )
 
         selected = [
-            row
-            for row in rows
+            item
+            for item in structured
             if (
-                row["datetime"]
-                and row["datetime"] >= cutoff
+                item["datetime"]
+                and item["datetime"] >= cutoff
             )
         ]
 
         training_dates = {
-            row["date"]
-            for row in selected
+            item["date"]
+            for item in selected
         }
 
         by_discipline = {}
@@ -773,24 +915,24 @@ def summarize_activities(activities):
             "other"
         ):
             subset = [
-                row
-                for row in selected
-                if row["discipline"] == discipline
+                item
+                for item in selected
+                if item["discipline"] == discipline
             ]
 
             by_discipline[discipline] = {
                 "sessions": len(subset),
                 "duration_h": round(
                     sum(
-                        row["duration_sec"]
-                        for row in subset
+                        item["duration_sec"]
+                        for item in subset
                     ) / 3600,
                     2
                 ),
                 "distance_km": round(
                     sum(
-                        row["distance_km"]
-                        for row in subset
+                        item["distance_km"]
+                        for item in subset
                     ),
                     1
                 )
@@ -800,14 +942,14 @@ def summarize_activities(activities):
             "total_sessions": len(selected),
             "total_duration_h": round(
                 sum(
-                    row["duration_sec"]
-                    for row in selected
+                    item["duration_sec"]
+                    for item in selected
                 ) / 3600,
                 2
             ),
             "hard_sessions": sum(
-                row["hard"]
-                for row in selected
+                item["hard"]
+                for item in selected
             ),
             "training_days": len(
                 training_dates
@@ -823,8 +965,8 @@ def summarize_activities(activities):
             "by_discipline": by_discipline
         }
 
-    cutoff = (
-        current
+    analysis_cutoff = (
+        current_time
         - timedelta(
             days=ANALYSEPERIODE_DAGEN
         )
@@ -832,14 +974,14 @@ def summarize_activities(activities):
 
     weeks = {}
 
-    for row in rows:
-        if not row["datetime"]:
+    for item in structured:
+        if not item["datetime"]:
             continue
 
-        if row["datetime"] < cutoff:
+        if item["datetime"] < analysis_cutoff:
             continue
 
-        week_key = row["week"]
+        week_key = item["week"]
 
         week = weeks.setdefault(
             week_key,
@@ -849,41 +991,45 @@ def summarize_activities(activities):
                 "bike_duration_h": 0.0,
                 "hard_sessions": 0,
                 "bike_sessions": 0,
+                "strength_sessions": 0,
                 "power_values": [],
                 "max_power_values": []
             }
         )
 
         week["total_duration_h"] += (
-            row["duration_sec"] / 3600
+            item["duration_sec"] / 3600
         )
 
         week["hard_sessions"] += int(
-            row["hard"]
+            item["hard"]
         )
 
-        if row["discipline"] == "bike":
+        if item["discipline"] == "bike":
             week["bike_sessions"] += 1
 
             week["bike_duration_h"] += (
-                row["duration_sec"] / 3600
+                item["duration_sec"] / 3600
             )
 
-            if row["average_power"] is not None:
+            if item["average_power"] is not None:
                 week["power_values"].append(
                     safe_float(
-                        row["average_power"]
+                        item["average_power"]
                     )
                 )
 
-            if row["max_power"] is not None:
+            if item["max_power"] is not None:
                 week[
                     "max_power_values"
                 ].append(
                     safe_float(
-                        row["max_power"]
+                        item["max_power"]
                     )
                 )
+
+        if item["discipline"] == "strength":
+            week["strength_sessions"] += 1
 
     weekly_trends = []
 
@@ -911,6 +1057,9 @@ def summarize_activities(activities):
             "bike_sessions": week[
                 "bike_sessions"
             ],
+            "strength_sessions": week[
+                "strength_sessions"
+            ],
             "hard_sessions": week[
                 "hard_sessions"
             ],
@@ -935,89 +1084,105 @@ def summarize_activities(activities):
 
     recent_activities = []
 
-    for row in rows[:10]:
+    for item in structured[:10]:
         recent_activities.append({
-            "date": row["date"],
-            "name": row["name"],
-            "discipline": row["discipline"],
+            "date": item["date"],
+            "name": item["name"],
+            "discipline": item["discipline"],
             "duration": format_duration(
-                row["duration_sec"]
+                item["duration_sec"]
             ),
-            "distance_km": row[
+            "distance_km": item[
                 "distance_km"
             ],
-            "average_hr": row[
+            "average_hr": item[
                 "average_hr"
             ],
-            "aerobic_te": row[
+            "aerobic_te": item[
                 "aerobic_te"
             ],
-            "anaerobic_te": row[
+            "anaerobic_te": item[
                 "anaerobic_te"
             ],
-            "average_power": row[
+            "average_power": item[
                 "average_power"
             ],
-            "normalized_power": row[
+            "normalized_power": item[
                 "normalized_power"
             ],
-            "max_power": row[
+            "max_power": item[
                 "max_power"
             ],
-            "hard": row["hard"]
+            "hard": item["hard"]
         })
 
     return {
         "last_7_days": summarize_window(7),
         "last_28_days": summarize_window(28),
+
         "condition_evolution": {
             "analysis_period_days": (
                 ANALYSEPERIODE_DAGEN
             ),
             "weekly_trends": weekly_trends
         },
+
         "latest_activity": (
             recent_activities[0]
             if recent_activities
             else None
         ),
-        "recent_activities": recent_activities,
+
+        "recent_activities": (
+            recent_activities
+        ),
+
         "data_limitations": [
             (
                 "Activiteitssamenvattingen tonen "
-                "geen betrouwbare tijd in zones "
-                "of intervalverloop."
+                "geen betrouwbare tijd in vermogenszones "
+                "of het volledige intervalverloop."
             ),
             (
-                "Gemiddeld ritvermogen is niet "
-                "geschikt om FTP-, VO2max- of "
-                "sprintprogressie op zichzelf te bewijzen."
+                "Gemiddeld ritvermogen is niet geschikt "
+                "om FTP-, VO2max- of sprintprogressie "
+                "op zichzelf te bewijzen."
+            ),
+            (
+                "Een geregistreerd maximaal vermogen "
+                "kan door meetfouten of een zeer korte piek "
+                "worden beïnvloed."
             ),
             (
                 "Techniek, positionering en koersinzicht "
-                "zijn niet rechtstreeks uit deze Garmin-"
-                "samenvatting af te leiden."
+                "zijn niet rechtstreeks uit Garmin-"
+                "activiteitssamenvattingen af te leiden."
+            ),
+            (
+                "Krachttraining wordt alleen herkend wanneer "
+                "Garmin het activiteitstype correct registreert."
             )
         ],
+
         "data_quality": {
             "activities_loaded": len(
                 activities
             ),
             "activities_with_datetime": sum(
-                row["datetime"] is not None
-                for row in rows
+                item["datetime"] is not None
+                for item in structured
             ),
             "activities_with_hr": sum(
-                row["average_hr"] is not None
-                for row in rows
+                item["average_hr"] is not None
+                for item in structured
             ),
             "bike_activities_with_power": sum(
                 (
-                    row["discipline"] == "bike"
-                    and row["average_power"]
+                    item["discipline"] == "bike"
+                    and item["average_power"]
                     is not None
                 )
-                for row in rows
+                for item in structured
             )
         }
     }
@@ -1119,15 +1284,28 @@ def race_calendar_summary():
 
     return {
         "planned_races": len(races),
+
         "planned_a_races": sum(
             race.get("priority") == "A"
             for race in races
         ),
+
+        "planned_b_races": sum(
+            race.get("priority") == "B"
+            for race in races
+        ),
+
+        "planned_c_races": sum(
+            race.get("priority") == "C"
+            for race in races
+        ),
+
         "target_races": (
             f"{SEASON_CONFIG['target_race_count_min']} "
             f"tot "
             f"{SEASON_CONFIG['target_race_count_max']}"
         ),
+
         "calendar_complete": (
             SEASON_CONFIG[
                 "target_race_count_min"
@@ -1137,6 +1315,7 @@ def race_calendar_summary():
                 "target_race_count_max"
             ]
         ),
+
         "races": races
     }
 
@@ -1151,16 +1330,16 @@ def phase_anchor(today):
         date(2027, 5, 1)
     ]
 
-    valid = [
+    valid_anchors = [
         anchor
         for anchor in anchors
         if anchor <= today
     ]
 
-    if not valid:
+    if not valid_anchors:
         return None
 
-    return max(valid)
+    return max(valid_anchors)
 
 
 def determine_block(today):
@@ -1169,40 +1348,41 @@ def determine_block(today):
     if anchor is None:
         return None
 
-    week = (
+    week_number = (
         (today - anchor).days // 7
     ) % 4 + 1
 
     labels = {
-        1: "opbouw 1",
-        2: "opbouw 2",
-        3: "opbouw 3",
-        4: "herstelweek"
+        1: "opbouwweek 1",
+        2: "opbouwweek 2",
+        3: "opbouwweek 3",
+        4: "herstel- of consolidatieweek"
     }
 
-    if week == 4:
+    if week_number == 4:
         rule = (
-            "Verlaag volume en zware belasting. "
-            "Haal geen gemiste trainingen in."
+            "Verlaag fietsvolume en krachtvolume. "
+            "Behoud alleen beperkte intensiteit indien "
+            "het herstelrisico laag is."
         )
     else:
         rule = (
-            "Bouw gecontroleerd op en verhoog "
-            "maximaal één hoofdvariabele."
+            "Bouw gecontroleerd op en verhoog maximaal "
+            "één hoofdvariabele."
         )
 
     return {
         "phase_anchor": anchor.isoformat(),
-        "week_number": week,
-        "week_type": labels[week],
+        "week_number": week_number,
+        "week_type": labels[week_number],
         "rule": rule
     }
 
 
 def determine_training_phase(
     today,
-    upcoming,
-    recent
+    upcoming_races,
+    recent_races
 ):
     preparation_start = date.fromisoformat(
         SEASON_CONFIG[
@@ -1210,27 +1390,27 @@ def determine_training_phase(
         ]
     )
 
-    season_start = date.fromisoformat(
+    race_season_start = date.fromisoformat(
         SEASON_CONFIG[
             "race_season_start"
         ]
     )
 
-    season_end = date.fromisoformat(
+    race_season_end = date.fromisoformat(
         SEASON_CONFIG[
             "race_season_end"
         ]
     )
 
     next_race = (
-        upcoming[0]
-        if upcoming
+        upcoming_races[0]
+        if upcoming_races
         else None
     )
 
     last_race = (
-        recent[0]
-        if recent
+        recent_races[0]
+        if recent_races
         else None
     )
 
@@ -1241,13 +1421,22 @@ def determine_training_phase(
                 "herstel en mentale reset"
             ),
             "goal": (
-                "Herstellen en opnieuw zin krijgen "
-                "in gestructureerde training."
+                "Het vorige seizoen afsluiten en "
+                "hersteld aan de voorbereiding beginnen."
+            ),
+            "bike_focus": (
+                "Flexibel, rustig en zonder "
+                "wedstrijdgerichte belasting."
+            ),
+            "strength_focus": (
+                "Mobiliteit en gecontroleerde gewenning. "
+                "Nog geen zware krachtopbouw."
             ),
             "rules": [
-                "Train flexibel en rustig.",
+                "Train flexibel en overwegend rustig.",
                 "Geen vormtest nodig.",
-                "Introduceer kracht geleidelijk."
+                "Geen vroege wedstrijdvorm nastreven.",
+                "Introduceer krachttraining geleidelijk."
             ]
         }
 
@@ -1255,24 +1444,26 @@ def determine_training_phase(
         return {
             "phase": "Basisfase 1",
             "primary_adaptation": (
-                "aerobe basis, regelmaat "
-                "en algemene kracht"
+                "aerobe basis, regelmaat en algemene kracht"
             ),
             "goal": (
-                "Een duurzaam fundament bouwen "
-                "zonder vroege wedstrijdvorm na te jagen."
+                "Een duurzaam fundament bouwen zonder "
+                "vroege wedstrijdvorm na te jagen."
+            ),
+            "bike_focus": (
+                "Overwegend rustige duur, traptechniek "
+                "en trainingsregelmaat."
+            ),
+            "strength_focus": (
+                "Meestal twee niet-opeenvolgende "
+                "krachtsessies per week indien herstelbaar."
             ),
             "rules": [
-                "Meeste fietstijd rustig.",
-                "Maximaal één kwaliteitssessie per week.",
-                (
-                    "Eén of twee krachtsessies "
-                    "indien herstelbaar."
-                ),
-                (
-                    "Techniek mag laag belastend "
-                    "worden geoefend."
-                )
+                "De meeste fietstijd blijft rustig.",
+                "Maximaal één fietskwaliteitssessie per week.",
+                "Bouw krachttraining technisch en progressief op.",
+                "Vermijd spierfalen en onnodige spierpijn.",
+                "Techniek mag laag belastend worden geoefend."
             ]
         }
 
@@ -1280,24 +1471,26 @@ def determine_training_phase(
         return {
             "phase": "Basisfase 2",
             "primary_adaptation": (
-                "duurzaamheid en musculair "
-                "uithoudingsvermogen"
+                "duurzaamheid en musculair uithoudingsvermogen"
             ),
             "goal": (
-                "Langere aerobe belasting combineren "
-                "met progressieve sweet spot of tempo."
+                "Langere aerobe belasting combineren met "
+                "progressieve tempo- of sweet-spottraining."
+            ),
+            "bike_focus": (
+                "Rustige lange duur, tempo, sweet spot "
+                "en gecontroleerde krachtuithouding."
+            ),
+            "strength_focus": (
+                "Maximale kracht verder ontwikkelen. "
+                "Meestal twee sessies per week indien herstelbaar."
             ),
             "rules": [
-                (
-                    "Eén progressieve sweet-spot- "
-                    "of temposessie."
-                ),
-                (
-                    "Tweede kwaliteit alleen "
-                    "bij goed herstel."
-                ),
-                "Behoud rustige lange duur.",
-                "Behoud krachttraining."
+                "Plan één progressieve tempo- of sweet-spotsessie.",
+                "Plan een tweede fietskwaliteit alleen bij goed herstel.",
+                "Behoud minstens één langere rustige duurtraining.",
+                "Verhoog krachtbelasting alleen bij goede techniek.",
+                "Plaats zware kracht niet vlak voor fietskwaliteit."
             ]
         }
 
@@ -1308,20 +1501,22 @@ def determine_training_phase(
                 "drempelvermogen en VO2max"
             ),
             "goal": (
-                "Aerobe capaciteit, FTP, "
-                "drempelduur en VO2max ontwikkelen."
+                "Aerobe capaciteit, FTP, drempelduur "
+                "en VO2max gericht ontwikkelen."
+            ),
+            "bike_focus": (
+                "Drempel, VO2max en voldoende rustige duur."
+            ),
+            "strength_focus": (
+                "Meestal één onderhoudssessie per week. "
+                "Een tweede alleen bij lage fietsbelasting."
             ),
             "rules": [
-                "Maximaal twee kwaliteitssessies.",
-                (
-                    "Bij voorkeur minimaal 48 uur "
-                    "tussen zware prikkels."
-                ),
-                (
-                    "Een zware groepsrit telt "
-                    "als kwaliteitssessie."
-                ),
-                "Behoud voldoende rustige duur."
+                "Maximaal twee fietskwaliteitssessies per week.",
+                "Plan bij voorkeur minimaal 48 uur tussen zware prikkels.",
+                "Een zware groepsrit telt als kwaliteitssessie.",
+                "Behoud voldoende rustige duur.",
+                "Verminder krachtvolume voordat fietskwaliteit wordt geschrapt."
             ]
         }
 
@@ -1329,57 +1524,56 @@ def determine_training_phase(
         return {
             "phase": "Koersspecifieke opbouw",
             "primary_adaptation": (
-                "herhaalde hoge intensiteit "
-                "en anaerobe capaciteit"
+                "herhaalde hoge intensiteit en anaerobe capaciteit"
             ),
             "goal": (
                 "Aerobe vorm vertalen naar versnellingen, "
-                "herstel tussen inspanningen en "
-                "sprint na vermoeidheid."
+                "herstel tussen inspanningen en sprint na vermoeidheid."
+            ),
+            "bike_focus": (
+                "Herhaalde VO2max-inspanningen, anaerobe capaciteit, "
+                "acceleraties en korte kwalitatieve sprints."
+            ),
+            "strength_focus": (
+                "Eén onderhoudssessie per week met beperkt volume."
             ),
             "rules": [
-                (
-                    "Drempel met een beperkte "
-                    "onderhoudsdosis behouden."
-                ),
-                (
-                    "Voeg herhaalde VO2max- of "
-                    "anaerobe inspanningen toe."
-                ),
-                (
-                    "Sprint kort, technisch "
-                    "en kwalitatief."
-                ),
-                "Krachttraining gaat naar onderhoud."
+                "Onderhoud drempel met een beperkte dosis.",
+                "Voeg herhaalde hoge-intensiteitsinspanningen toe.",
+                "Sprint kort, technisch en kwalitatief.",
+                "Voorkom drie zware fietsdagen in één week.",
+                "Krachttraining mag sprint- of intervalkwaliteit niet verminderen."
             ]
         }
 
-    if today < season_start:
+    if today < race_season_start:
         return {
             "phase": "Wedstrijdvoorbereiding",
             "primary_adaptation": (
-                "koersscherpte en vaardigheid"
+                "koersscherpte en wedstrijdvaardigheid"
             ),
             "goal": (
-                "Fysieke kwaliteiten combineren met "
-                "positionering, bochten, tempowissels "
-                "en sprinttiming."
+                "Fysieke kwaliteiten combineren met positionering, "
+                "bochten, tempowissels en sprinttiming."
+            ),
+            "bike_focus": (
+                "Koerssimulaties, snelle groepsritten, "
+                "herhaalde acceleraties en sprint na vermoeidheid."
+            ),
+            "strength_focus": (
+                "Korte onderhoudssessie met lage omvang. "
+                "Geen onnodige spierpijn."
             ),
             "rules": [
-                (
-                    "Gebruik een koerssimulatie of snelle "
-                    "groepsrit als kwaliteitssessie."
-                ),
-                "Geen taper zonder A-wedstrijd.",
-                "Vermoeidheid niet opstapelen.",
-                (
-                    "Techniek en positionering "
-                    "bewust oefenen."
-                )
+                "Gebruik maximaal één koerssimulatie of snelle groepsrit.",
+                "Behoud een tweede gerichte fietskwaliteit alleen indien herstelbaar.",
+                "Geen taper zonder werkelijk ingevoerde A-wedstrijd.",
+                "Oefen bochten en positionering bewust.",
+                "Vermijd opstapelende vermoeidheid."
             ]
         }
 
-    if today <= season_end:
+    if today <= race_season_end:
         if (
             last_race
             and last_race["days_since"] <= 2
@@ -1391,13 +1585,18 @@ def determine_training_phase(
                     "Wedstrijdvermoeidheid laten zakken "
                     "en de volgende prikkel correct timen."
                 ),
+                "bike_focus": (
+                    "Rust of zeer lichte herstelrit."
+                ),
+                "strength_focus": (
+                    "Geen zware krachttraining zolang "
+                    "wedstrijdvermoeidheid aanwezig is."
+                ),
                 "rules": [
-                    "Rust of zeer licht fietsen.",
+                    "Rust of fiets zeer licht.",
                     "Geen gemiste kilometers inhalen.",
-                    (
-                        "Laat feedback en herstel "
-                        "de hervatting bepalen."
-                    )
+                    "Geen zware krachttraining.",
+                    "Laat subjectieve feedback en herstel de hervatting bepalen."
                 ]
             }
 
@@ -1407,19 +1606,22 @@ def determine_training_phase(
         ):
             return {
                 "phase": "Wedstrijddag",
-                "primary_adaptation": (
-                    "wedstrijdprestatie"
-                ),
+                "primary_adaptation": "wedstrijdprestatie",
                 "goal": (
-                    "Fris en voorbereid starten."
+                    "Fris en voorbereid aan de start komen."
+                ),
+                "bike_focus": (
+                    "De wedstrijd is de hoofdtraining."
+                ),
+                "strength_focus": (
+                    "Geen krachttraining."
                 ),
                 "rules": [
-                    "Wedstrijd is de hoofdtraining.",
+                    "Voer geen extra duurtraining uit.",
                     "Gebruik een functionele warming-up.",
-                    (
-                        "Focus op veilige positionering "
-                        "en beslismomenten."
-                    )
+                    "Focus op veilige positionering.",
+                    "Bewaar beslissingsvermogen voor de finale.",
+                    "Voer geen krachttraining uit."
                 ]
             }
 
@@ -1437,13 +1639,19 @@ def determine_training_phase(
                     "Vermoeidheid verlagen zonder "
                     "wedstrijdscherpte te verliezen."
                 ),
+                "bike_focus": (
+                    "Lager volume met korte openers."
+                ),
+                "strength_focus": (
+                    "Geen zware krachttraining. Alleen zeer lichte "
+                    "activatie wanneer dit vertrouwd is."
+                ),
                 "rules": [
-                    "Verlaag het volume.",
-                    "Behoud korte openers.",
-                    (
-                        "Geen zware drempel-, VO2max- "
-                        "of krachttraining."
-                    )
+                    "Verlaag het fietsvolume.",
+                    "Behoud enkele korte openers.",
+                    "Geen zware drempel- of VO2max-training.",
+                    "Geen zware beentraining binnen 48 uur voor de wedstrijd.",
+                    "Frisheid is belangrijker dan extra trainingswinst."
                 ]
             }
 
@@ -1456,23 +1664,21 @@ def determine_training_phase(
                 "Wedstrijden, herstel en gerichte "
                 "onderhoudstraining in balans brengen."
             ),
+            "bike_focus": (
+                "Wedstrijdspecifieke vorm, rustig volume "
+                "en gerichte onderhoudsprikkels."
+            ),
+            "strength_focus": (
+                "Eén korte onderhoudssessie per zeven tot tien dagen "
+                "wanneer de wedstrijdkalender dit toestaat."
+            ),
             "rules": [
-                (
-                    "Een wedstrijd telt als "
-                    "kwaliteitssessie."
-                ),
-                (
-                    "Plan geen twee zware intervals "
-                    "plus een wedstrijd."
-                ),
-                (
-                    "Gebruik wedstrijdarme blokken "
-                    "voor gerichte ontwikkeling."
-                ),
-                (
-                    "Plan maximaal twee "
-                    "wedstrijdweekends na elkaar."
-                )
+                "Een wedstrijd telt als kwaliteitssessie.",
+                "Plan geen twee zware intervals plus een wedstrijd.",
+                "Gebruik wedstrijdarme blokken voor gerichte ontwikkeling.",
+                "Plan maximaal twee wedstrijdweekends na elkaar.",
+                "Plan kracht niet vlak voor een wedstrijd of zware intervaltraining.",
+                "Behandel niet iedere wedstrijd als een piekmoment."
             ]
         }
 
@@ -1485,37 +1691,44 @@ def determine_training_phase(
             "Herstellen, evalueren en pas daarna "
             "een nieuwe opbouw starten."
         ),
+        "bike_focus": (
+            "Rustig en flexibel."
+        ),
+        "strength_focus": (
+            "Tijdelijk verminderen en later opnieuw opbouwen."
+        ),
         "rules": [
             "Neem rustige of volledig vrije dagen.",
-            (
-                "Evalueer het volledige "
-                "prestatieprofiel."
-            ),
-            (
-                "Start niet onmiddellijk "
-                "een nieuw zwaar blok."
-            )
+            "Evalueer het volledige prestatieprofiel.",
+            "Start niet onmiddellijk een zwaar nieuw blok.",
+            "Bepaal nieuwe doelen na voldoende herstel."
         ]
     }
 
 
 def determine_recovery_risk(
     summary,
-    sleep,
-    feedback
+    sleep_info,
+    user_feedback
 ):
     risk_score = 0
     reasons = []
 
     feedback_text = (
-        feedback or ""
+        user_feedback or ""
     ).lower()
 
-    warning_words = (
+    pain_or_illness_words = (
         "pijn",
         "blessure",
+        "knie",
+        "achilles",
+        "scheen",
+        "rugpijn",
         "ziek",
         "koorts",
+        "verkouden",
+        "griep",
         "oververmoeid",
         "uitgeput",
         "zeer moe",
@@ -1526,23 +1739,25 @@ def determine_recovery_risk(
 
     if any(
         word in feedback_text
-        for word in warning_words
+        for word in pain_or_illness_words
     ):
         risk_score += 3
 
         reasons.append(
-            "De subjectieve feedback bevat "
-            "een duidelijk waarschuwingssignaal."
+            "De subjectieve feedback bevat een signaal "
+            "rond pijn, ziekte of duidelijke vermoeidheid."
         )
 
-    sleep_score = sleep.get("score")
+    sleep_score = sleep_info.get(
+        "score"
+    )
 
     if sleep_score is None:
         risk_score += 1
 
         reasons.append(
-            "De slaapscore ontbreekt. "
-            "Herstel wordt daarom niet positief verondersteld."
+            "De slaapscore ontbreekt. Herstel wordt "
+            "daarom niet automatisch positief beoordeeld."
         )
 
     elif sleep_score < 60:
@@ -1575,13 +1790,26 @@ def determine_recovery_risk(
             f"{sleep_score}/100."
         )
 
-    last_7_days = summary[
-        "last_7_days"
-    ]
+    last_7_days = summary.get(
+        "last_7_days",
+        {}
+    )
 
-    hard_sessions = last_7_days[
-        "hard_sessions"
-    ]
+    hard_sessions = safe_int(
+        last_7_days.get(
+            "hard_sessions"
+        )
+    )
+
+    total_duration = safe_float(
+        last_7_days.get(
+            "total_duration_h"
+        )
+    )
+
+    rest_days = last_7_days.get(
+        "rest_days_estimate"
+    )
 
     if hard_sessions >= 3:
         risk_score += 2
@@ -1595,13 +1823,15 @@ def determine_recovery_risk(
         risk_score += 1
 
         reasons.append(
-            "Er waren twee intensieve "
-            "sessies in zeven dagen."
+            "Er waren twee intensieve sessies "
+            "in de laatste zeven dagen."
         )
 
-    rest_days = last_7_days[
-        "rest_days_estimate"
-    ]
+    else:
+        reasons.append(
+            f"Het aantal intensieve sessies in "
+            f"zeven dagen is beperkt: {hard_sessions}."
+        )
 
     if (
         rest_days is not None
@@ -1614,15 +1844,17 @@ def determine_recovery_risk(
             "in de laatste zeven dagen."
         )
 
-    total_duration = last_7_days[
-        "total_duration_h"
-    ]
+    elif rest_days is not None:
+        reasons.append(
+            f"Geschat aantal rustdagen in zeven dagen: "
+            f"{rest_days}."
+        )
 
     if total_duration >= 10:
         risk_score += 2
 
         reasons.append(
-            f"Het volume van de laatste zeven dagen "
+            f"Het zeven-daagse trainingsvolume "
             f"is hoog: {total_duration} uur."
         )
 
@@ -1630,87 +1862,123 @@ def determine_recovery_risk(
         risk_score += 1
 
         reasons.append(
-            f"Het volume van de laatste zeven dagen "
+            f"Het zeven-daagse trainingsvolume "
             f"is matig tot hoog: {total_duration} uur."
+        )
+
+    else:
+        reasons.append(
+            f"Het zeven-daagse trainingsvolume "
+            f"blijft beheersbaar: {total_duration} uur."
         )
 
     if risk_score >= 5:
         level = "hoog"
 
-        boundaries = [
+        allowed_boundaries = [
             "rust of maximaal een zeer lichte herstelrit",
             "geen intervals",
+            "geen sprinttraining",
+            "geen zware krachttraining",
             "geen benchmarktest",
-            "geen lange duurtraining"
+            "geen lange duurtraining",
+            "geen dubbele trainingsdag"
         ]
 
     elif risk_score >= 3:
         level = "medium"
 
-        boundaries = [
+        allowed_boundaries = [
             "volume niet verhogen",
-            (
-                "hoogstens een korte kwaliteitssessie "
-                "als de benen goed voelen"
-            ),
+            "geen zware krachttraining",
+            "hoogstens een korte kwaliteitssessie als de benen goed voelen",
             "geen benchmarktest",
-            "geen diepe intervals"
+            "geen diepe intervals",
+            "geen dubbele trainingsdag"
         ]
 
     else:
         level = "laag"
 
-        boundaries = [
+        allowed_boundaries = [
             "fasegebonden training toegestaan",
-            (
-                "maximaal twee kwaliteitssessies "
-                "per week"
-            ),
-            (
-                "bij voorkeur minimaal 48 uur "
-                "tussen zware prikkels"
-            )
+            "maximaal twee kwaliteitssessies per week",
+            "bij voorkeur minimaal 48 uur tussen zware prikkels",
+            "krachttraining volgens de fase toegestaan",
+            "maximaal één hoofdtraining per dag"
         ]
 
     return {
         "level": level,
         "score": risk_score,
         "reasons": reasons,
-        "allowed_training_boundaries": boundaries
+        "allowed_training_boundaries": (
+            allowed_boundaries
+        )
     }
 
 
 def build_context(
     summary,
-    sleep,
+    sleep_info,
     weather,
     phase,
     races,
-    recent,
+    recent_races,
     recovery,
-    metrics
+    athlete_metrics
 ):
+    today = now_be().date()
+
     return {
-        "today": now_be().date().isoformat(),
+        "today": today.isoformat(),
         "weekday": now_be().strftime("%A"),
         "mode": MODUS,
+
         "athlete_profile": ATHLETE_PROFILE,
         "season_config": SEASON_CONFIG,
+        "month_plan_config": MONTH_PLAN_CONFIG,
+
         "current_training_phase": phase,
         "training_block": determine_block(
-            now_be().date()
+            today
         ),
-        "race_calendar": race_calendar_summary(),
+
+        "race_calendar": (
+            race_calendar_summary()
+        ),
+
         "upcoming_races": races,
-        "recent_races": recent,
+        "recent_races": recent_races,
+
         "recovery_risk": recovery,
-        "sleep": sleep,
+        "sleep": sleep_info,
         "weather": weather,
+
         "garmin_summary": summary,
-        "athlete_metrics": metrics,
+        "athlete_metrics": athlete_metrics,
+
         "user_feedback": USER_FEEDBACK,
         "extra_context": EXTRA_CONTEXT,
+
         "hard_constraints": [
+            (
+                "Het seizoensplan begint altijd "
+                "op 1 oktober 2026."
+            ),
+            (
+                "Het seizoensplan loopt tot en met "
+                "15 september 2027."
+            ),
+            (
+                "Het prestatiedoel is doorgroeien van "
+                "wedstrijden uitrijden naar competitief "
+                "meedoen voor de prijzen."
+            ),
+            (
+                "Presenteer meedoen voor de prijzen als "
+                "ambitie en niet als gegarandeerde uitkomst."
+            ),
             (
                 "Optimaliseer allround wielerprestatie. "
                 "FTP is belangrijk maar nooit het enige doel."
@@ -1720,29 +1988,30 @@ def build_context(
                 "gaan voor een losse zware training."
             ),
             (
-                "Kies één primaire adaptatie per fase en week. "
-                "Onderhoud andere kwaliteiten met de "
-                "kleinst effectieve dosis."
+                "Kies één primaire adaptatie per fase, maand "
+                "en week. Onderhoud andere kwaliteiten met "
+                "de kleinst effectieve dosis."
             ),
             (
                 "Elke kwaliteitstraining moet in een "
                 "herkenbare progressie passen."
             ),
             (
-                "Verhoog per stap maximaal één hoofdvariabele: "
-                "duur, herhalingen, vermogen of totale omvang."
+                "Verhoog per progressiestap maximaal één "
+                "hoofdvariabele: duur, herhalingen, vermogen "
+                "of totale omvang."
             ),
             (
-                "Maximaal twee kwaliteitssessies per week. "
-                "Een zware groepsrit of wedstrijd telt mee."
+                "Maximaal twee fietskwaliteitssessies per week. "
+                "Een zware groepsrit en wedstrijd tellen mee."
             ),
             (
                 "Behoud voldoende rustige duur en minstens "
                 "één rustdag of zeer lichte dag per week."
             ),
             (
-                "Gebruik meestal drie opbouwweken en één "
-                "herstelweek, maar hersteldata gaan voor."
+                "Gebruik meestal drie progressieve opbouwweken "
+                "en één herstelweek, maar hersteldata gaan voor."
             ),
             (
                 "Plan bij voorkeur minimaal 48 uur "
@@ -1753,13 +2022,54 @@ def build_context(
                 "één hoofdtraining per dag."
             ),
             (
-                "Krachttraining is opbouwend in de basisfase "
-                "en onderhoudend richting wedstrijden."
+                "Plan krachttraining doelgericht en fasegebonden."
+            ),
+            (
+                "Plan in de basisperiode meestal twee "
+                "niet-opeenvolgende krachtsessies per week "
+                "indien herstel dit toelaat."
+            ),
+            (
+                "Plan tijdens de opbouwperiode meestal één "
+                "onderhoudende krachtsessie per week."
+            ),
+            (
+                "Plan tijdens de wedstrijdperiode alleen een "
+                "korte onderhoudsdosis wanneer die geen "
+                "wedstrijd of fietskwaliteit schaadt."
+            ),
+            (
+                "Plan geen zware krachttraining binnen 48 uur "
+                "voor een prioritaire wedstrijd."
+            ),
+            (
+                "Plan geen zware beentraining vlak voor "
+                "VO2max-, anaerobe of sprinttraining."
+            ),
+            (
+                "Verminder in herstelweken ook het krachtvolume."
             ),
             (
                 "Techniek, positionering en bochtenwerk mogen "
                 "als laag-belastende vaardigheidsfocus "
                 "worden opgenomen."
+            ),
+            (
+                "Maak een maandplan als concreet vier- "
+                "of vijfwekenkader."
+            ),
+            (
+                "Een maandplan moet fietsbelasting, "
+                "krachttraining, herstel en evaluatie combineren."
+            ),
+            (
+                "Een maandplan mag geen vier identieke "
+                "trainingsweken bevatten."
+            ),
+            (
+                "Gebruik de vierde week standaard als herstel- "
+                "of consolidatieweek, tenzij wedstrijdkalender "
+                "of herstelstatus een andere logica vereist."
             ),
             (
                 "Geen benchmarktest bij medium of hoog "
@@ -1773,7 +2083,7 @@ def build_context(
             ),
             (
                 "Verzin geen FTP, zones, HRV, trainingsbelasting, "
-                "wedstrijd of prestatieverbetering."
+                "wedstrijd, testhistoriek of prestatieverbetering."
             ),
             (
                 "Gemiddeld ritvermogen is geen bewijs van "
@@ -1781,15 +2091,15 @@ def build_context(
             ),
             (
                 "Beoordeel sprint, duurzaamheid en herhaalde "
-                "inspanningen alleen wanneer de data "
-                "dit ondersteunen."
+                "inspanningen alleen wanneer de beschikbare "
+                "data dit ondersteunen."
             ),
             (
                 "Praktische voeding en hydratatie mogen worden "
                 "benoemd, maar zonder medische of absolute claims."
             ),
             (
-                "Geef duidelijk aan wat feit uit de data is "
+                "Geef duidelijk aan wat feit uit Garmin is "
                 "en wat een coachinschatting is."
             )
         ]
@@ -1797,7 +2107,7 @@ def build_context(
 
 
 def build_prompt(context):
-    structures = {
+    output_structures = {
         "dagadvies": """
 COACH TAKE
 
@@ -1811,15 +2121,18 @@ VANDAAG
 - Exacte training of rust
 - Duur
 - Intensiteit
-- Uitvoering
-- Afbreekcriteria
+- Concrete uitvoering
+- Trainingsdoel
+- Afbreek- of afschaalcriteria
 
-TRAININGSDOEL
-Welke capaciteit of vaardigheid wordt ontwikkeld?
+KRACHTTRAINING
+- Alleen opnemen als dit binnen de fase en herstelstatus past.
+- Geef aan of kracht vandaag opbouw, onderhoud of niet nodig is.
+- Vermijd onnodige spierpijn.
 
 WAAROM NU
 Leg de link met:
-- huidige fase
+- huidige trainingsfase
 - huidig trainingsblok
 - recente belasting
 - volgende wedstrijd
@@ -1853,6 +2166,16 @@ Geef per dag:
 - intensiteit
 - concrete uitvoering
 - trainingsdoel
+- herstel- of afbreekcriterium
+
+KRACHTTRAINING
+Geef:
+- aantal sessies
+- doel per sessie
+- plaatsing tegenover fietskwaliteit
+- oefenpatronen
+- indicatieve sets en herhalingen alleen als coachinschatting
+- voorwaarden om af te schalen
 
 BELASTINGSLOGICA
 Leg uit waar de zware dagen, rustige dagen en herstelmomenten staan.
@@ -1864,6 +2187,110 @@ VAARDIGHEID EN KOERSSPECIFIEKE FOCUS
 NIET DOEN
 
 FEITEN EN COACHINSCHATTING
+""",
+
+        "maandplan": """
+COACH TAKE
+
+MAAND EN TRAININGSFASE
+- Benoem de gekozen maand.
+- Benoem de fase van het seizoen.
+- Benoem het relevante trainingsblok.
+
+STARTSITUATIE
+- Wat tonen Garmin en subjectieve feedback?
+- Wat ontbreekt?
+- Maak onderscheid tussen feiten en coachinschatting.
+
+DOEL VAN DE MAAND
+Geef één duidelijk hoofddoel voor deze maand.
+
+PRIMAIRE ADAPTATIE
+Kies één primaire adaptatie:
+- herstel en continuïteit
+- aerobe basis
+- duurzaamheid
+- musculair uithoudingsvermogen
+- FTP en drempelduur
+- VO2max
+- herhaalde hoge intensiteit
+- anaerobe capaciteit
+- sprint
+- koersscherpte
+- wedstrijdprestatie
+
+ONDERHOUDSDOELEN
+Kies maximaal twee kwaliteiten die met een beperkte dosis worden onderhouden.
+
+WEEK 1
+Geef:
+- doel van de week
+- belangrijkste fietstraining
+- duurtraining
+- krachttraining
+- techniek of vaardigheid
+- herstelaccent
+- progressiecriterium
+
+WEEK 2
+Geef:
+- doel van de week
+- belangrijkste fietstraining
+- duurtraining
+- krachttraining
+- techniek of vaardigheid
+- herstelaccent
+- progressie tegenover week 1
+
+WEEK 3
+Geef:
+- doel van de week
+- belangrijkste fietstraining
+- duurtraining
+- krachttraining
+- techniek of vaardigheid
+- herstelaccent
+- progressie tegenover week 2
+
+WEEK 4 OF HERSTELWEEK
+Geef:
+- doel van de week
+- vermindering van fietsvolume
+- aanpassing van intensiteit
+- vermindering van krachtvolume
+- evaluatie van het trainingsblok
+- voorwaarden om het volgende blok te starten
+
+WEEK 5
+Voeg dit alleen toe als de kalendermaand daadwerkelijk een vijfde relevante trainingsweek bevat.
+
+KRACHTTRAINING
+Geef:
+- frequentie
+- doel
+- plaatsing tegenover fietstrainingen
+- oefenpatronen
+- indicatieve sets en herhalingen alleen als coachinschatting
+- voorwaarden om belasting te verhogen
+- voorwaarden om krachttraining af te schalen
+
+BENCHMARK OF EVALUATIE
+- Adviseer alleen een test als die binnen de fase past.
+- Een FTP-test is niet automatisch verplicht.
+- Een vaste klim, tijdrit, intervalbenchmark of herhaalde-sprintbenchmark mag ook.
+- Verzin geen testhistoriek.
+
+BIJSTURINGSREGELS
+Geef concrete regels voor:
+- slechte slaap
+- zware benen
+- pijn of ziekte
+- gemiste training
+- onverwachte groepsrit
+- uitzonderlijk goede trainingsdag
+
+FEITEN EN COACHINSCHATTING
+Maak het onderscheid expliciet.
 """,
 
         "race_readiness": """
@@ -1888,10 +2315,15 @@ Bespreek:
 - positionering
 - bochten
 - inspanningsverdeling
+- energie besparen
 - beslismomenten
+- voorbereiding op de finale
 
 FYSIEKE FOCUS
 Welke capaciteit moet gebruikt worden en wat moet niet meer opgebouwd worden?
+
+KRACHTTRAINING
+Geef expliciet aan dat zware krachttraining niet meer past vlak voor de wedstrijd.
 
 HERSTEL NA DE WEDSTRIJD
 
@@ -1915,12 +2347,25 @@ VO2MAX EN HERHAALDE HOGE INTENSITEIT
 
 ANAEROBE CAPACITEIT EN SPRINT
 
+KRACHTONTWIKKELING
+Bespreek:
+- geregistreerde krachtsessies
+- regelmaat
+- plaatsing tegenover fietskwaliteit
+- mogelijke herstelimpact
+- beperkingen in Garmin-data
+
 HERSTELBALANS
 
-KRACHT EN AANVULLENDE SPORTEN
+AANVULLENDE SPORTEN
 
 VAARDIGHEDEN EN KOERSSPECIFICITEIT
-Beoordeel dit alleen als de data het werkelijk tonen.
+Beoordeel dit alleen als de data of subjectieve feedback het werkelijk tonen.
+
+VOORUITGANG RICHTING MEEDOEN VOOR DE PRIJZEN
+- Benoem alleen meetbare of expliciet gerapporteerde vooruitgang.
+- Gebruik gemiddeld ritvermogen niet als bewijs.
+- Geef aan welke wedstrijdspecifieke informatie ontbreekt.
 
 WAT BEHOUDEN
 
@@ -1932,90 +2377,230 @@ CONCLUSIE VOOR DE KOMENDE TWEE WEKEN
         "seizoen_plan": """
 COACH TAKE
 
-HUIDIGE SITUATIE
+STARTPUNT OP 1 OKTOBER 2026
+- Benoem het huidige niveau.
+- De atleet kan wedstrijden uitrijden.
+- Het volgende doel is competitief meedoen voor de prijzen.
+- Behandel dit als ambitie, niet als garantie.
+
+SEIZOENSDOEL EN SUCCESCRITERIA
+Beschrijf concreet hoe vooruitgang zichtbaar kan worden:
+- langer competitief blijven in het peloton
+- beter reageren op herhaalde versnellingen
+- beter gepositioneerd aan de finale beginnen
+- later in de wedstrijd nog vermogen leveren
+- finales bereiken
+- in geselecteerde wedstrijden voor een uitslag rijden
 
 PRESTATIEPROFIEL
 Bespreek:
-- ontwikkeldoelen
-- beschikbare data
-- databeperkingen
-
-SEIZOENSOPBOUW PER FASE
-
-DOEL PER CAPACITEIT
-Bespreek:
 - aerobe basis
-- FTP
-- drempelduur
-- VO2max
-- anaerobe capaciteit
-- sprint
 - duurzaamheid
-- kracht
-- techniek
-
-WEDSTRIJDPLANNING
-Gebruik alleen werkelijk ingevoerde wedstrijden.
-
-HERSTEL- EN BENCHMARKMOMENTEN
-
-KOMENDE VIER WEKEN
-
-BELANGRIJKSTE AANPASSING
-"""
-    }
-
-    structure = structures.get(
-        MODUS,
-        structures["dagadvies"]
-    )
-
-    return f"""
-Je bent een nuchtere, ervaren wielercoach voor criterium- en wegwielrennen.
-
-Schrijf kort, menselijk, direct en concreet in het Nederlands.
-
-Het doel is niet een zo hoog mogelijke FTP op papier, maar de best mogelijke allround wedstrijdprestatie van mei tot midden september 2027.
-
-FTP is een belangrijke bouwsteen naast:
-- aerobe duurzaamheid
-- drempelduur
+- FTP en drempelduur
 - VO2max
-- herhaalde inspanningen
+- herhaalde hoge intensiteit
 - anaerobe capaciteit
 - sprint
 - kracht
 - techniek
 - herstel
+- databeperkingen
+
+SEIZOENSOPBOUW VAN 1 OKTOBER 2026 TOT EN MET 15 SEPTEMBER 2027
+
+MAANDOVERZICHT
+
+OKTOBER 2026
+Geef:
+- hoofddoel
+- fietsaccent
+- krachtaccent
+- herstelaccent
+- evaluatiemoment
+
+NOVEMBER 2026
+Geef:
+- hoofddoel
+- fietsaccent
+- krachtaccent
+- herstelaccent
+- evaluatiemoment
+
+DECEMBER 2026
+Geef:
+- hoofddoel
+- fietsaccent
+- krachtaccent
+- herstelaccent
+- evaluatiemoment
+
+JANUARI 2027
+Geef:
+- hoofddoel
+- fietsaccent
+- krachtaccent
+- herstelaccent
+- evaluatiemoment
+
+FEBRUARI 2027
+Geef:
+- hoofddoel
+- fietsaccent
+- krachtaccent
+- herstelaccent
+- evaluatiemoment
+
+MAART 2027
+Geef:
+- hoofddoel
+- fietsaccent
+- krachtaccent
+- herstelaccent
+- evaluatiemoment
+
+APRIL 2027
+Geef:
+- hoofddoel
+- fietsaccent
+- krachtaccent
+- techniekaccent
+- herstelaccent
+- evaluatiemoment
+
+MEI 2027
+Geef:
+- hoofddoel
+- wedstrijdaccent
+- trainingsaccent
+- krachtaccent
+- herstelaccent
+
+JUNI 2027
+Geef:
+- hoofddoel
+- wedstrijdaccent
+- trainingsaccent
+- krachtaccent
+- herstelaccent
+
+JULI 2027
+Geef:
+- hoofddoel
+- wedstrijdaccent
+- trainingsaccent
+- krachtaccent
+- herstelaccent
+
+AUGUSTUS 2027
+Geef:
+- hoofddoel
+- wedstrijdaccent
+- trainingsaccent
+- krachtaccent
+- herstelaccent
+
+1 TOT EN MET 15 SEPTEMBER 2027
+Geef:
+- hoofddoel
+- wedstrijdaccent
+- herstelaccent
+- seizoensevaluatie
+
+KRACHTPERIODISERING
+Beschrijf:
+- gewenning
+- algemene kracht
+- maximale kracht
+- onderhoud
+- afbouw rond wedstrijden
+
+WEDSTRIJDPLANNING
+Gebruik alleen werkelijk ingevoerde wedstrijden.
+Verzin geen wedstrijden of wedstrijddata.
+
+HERSTEL- EN BENCHMARKMOMENTEN
+Gebruik vaste en vergelijkbare protocollen.
+Plan geen test bij medium of hoog herstelrisico.
+
+BELANGRIJKSTE RANDVOORWAARDEN
+Benoem wat het meest bepalend is om van uitrijden naar competitief meedoen door te groeien.
+"""
+    }
+
+    output_structure = output_structures.get(
+        MODUS,
+        output_structures["dagadvies"]
+    )
+
+    prompt = f"""
+Je bent een nuchtere, ervaren wielercoach voor criterium- en wegwielrennen.
+
+Schrijf kort, menselijk, direct en concreet in het Nederlands.
+
+Het seizoensplan begint altijd op 1 oktober 2026 en loopt tot en met 15 september 2027.
+
+De atleet kan momenteel wielerwedstrijden uitrijden. Het doel voor het volgende seizoen is doorgroeien naar competitief meedoen voor de prijzen.
+
+Dit is een ambitieus prestatiedoel en geen gegarandeerde uitkomst.
+
+Het doel is niet een zo hoog mogelijke FTP op papier. De coach moet een compleet wedstrijdprofiel ontwikkelen:
+
+- aerobe basis
+- duurzaamheid
+- FTP en drempelduur
+- VO2max
+- herhaalde inspanningen boven drempel
+- anaerobe capaciteit
+- acceleratie
+- sprint
+- sprint na vermoeidheid
+- kracht
+- techniek
+- positionering
 - koersinzicht
+- herstel
+- wedstrijdspecifieke frisheid
 
 Coachregels:
 
 - Volg altijd de recovery boundaries en hard constraints uit de context.
-- Kies per fase en per week één primaire adaptatie.
+- Kies per fase, maand en week één primaire adaptatie.
 - Onderhoud andere kwaliteiten met de kleinst effectieve dosis.
-- Gebruik rustige duur, tempo, sweet spot, drempel, VO2max, anaerobe prikkels, sprint, kracht en techniek alleen wanneer ze bij de fase en herstelstatus passen.
+- Maak de training geleidelijk wedstrijdspecifieker naarmate mei nadert.
+- Gebruik rustige duur, tempo, sweet spot, drempel, VO2max, anaerobe prikkels, sprint, kracht en techniek alleen wanneer ze bij de fase passen.
 - Benoem bij iedere training het doel, de plaats in het blok en de beoogde progressie.
 - Verhoog per progressiestap maximaal één hoofdvariabele.
-- Meer training is niet automatisch beter.
-- Een zware groepsrit of wedstrijd vervangt een kwaliteitssessie en komt er niet bovenop.
+- Meer training is niet automatisch betere training.
+- Een zware groepsrit of wedstrijd vervangt een kwaliteitssessie.
+- Plan niet automatisch twee intervaltrainingen, een zware groepsrit, een wedstrijd en zware kracht in dezelfde week.
 - Gebruik herstel als combinatie van slaap, recente belasting en subjectieve feedback.
 - Een losse goede of slechte waarde beslist nooit alleen.
 - Als interval-, lap- of tijdreeksdata ontbreken, claim dan geen bewezen progressie in FTP, VO2max, sprint of duurzaamheid.
-- Gemiddeld vermogen van een volledige rit is geen bewijs van wedstrijdvorm.
-- Adviseer een benchmark alleen bij laag herstelrisico, na een passend trainingsblok en wanneer een vergelijkbare test minstens zes weken geleden was.
-- Als de testhistoriek ontbreekt, zeg dat expliciet.
-- Maak duidelijk onderscheid tussen feiten uit de data en coachinschattingen.
+- Gemiddeld ritvermogen van een volledige rit is geen bewijs van wedstrijdvorm.
+- Adviseer een benchmark alleen bij laag herstelrisico en na een passend trainingsblok.
+- Een FTP-test is niet automatisch de beste benchmark.
+- Plan krachttraining zwaarder in de basisperiode en onderhoudend richting wedstrijden.
+- Plan zware kracht niet vlak voor een belangrijke fietsprikkel of prioritaire wedstrijd.
+- Vermijd trainen tot spierfalen.
+- Verminder krachtvolume in herstelweken.
+- Verminder tijdens de wedstrijdperiode eerst het aantal sets voordat krachttraining volledig wordt verwijderd.
+- Techniek gaat bij krachttraining voor het gebruikte gewicht.
+- Voor maandplan: gebruik de maand uit extra_context. Als daar geen maand staat, gebruik de huidige kalendermaand.
+- Voor maandplan: voeg alleen week 5 toe als de maand daadwerkelijk een vijfde relevante trainingsweek bevat.
+- Voor seizoen_plan: start altijd op 1 oktober 2026, ongeacht de datum waarop deze run wordt uitgevoerd.
+- Maak duidelijk onderscheid tussen feiten uit Garmin en coachinschattingen.
 - Vermijd clichés, heroische taal, medische claims en verzonnen cijfers.
 
 OUTPUTSTRUCTUUR:
 
-{structure}
+{output_structure}
 
 Context in JSON:
 
 {json.dumps(context, ensure_ascii=False, indent=2)}
 """
+
+    return prompt
 
 
 def call_gemini(prompt):
@@ -2085,8 +2670,20 @@ def call_gemini(prompt):
 def subject_for_mode(context):
     if MODUS == "seizoen_plan":
         return (
-            "Wielercoach - seizoensplanning "
-            "en wielervorm 2026-2027"
+            "Wielercoach - seizoensplan "
+            "oktober 2026 tot september 2027"
+        )
+
+    if MODUS == "maandplan":
+        requested_month = (
+            EXTRA_CONTEXT.strip()
+            if EXTRA_CONTEXT.strip()
+            else now_be().strftime("%B %Y")
+        )
+
+        return (
+            f"Wielercoach - maandplan "
+            f"{requested_month}"
         )
 
     races = context.get(
@@ -2151,18 +2748,22 @@ def send_email(subject, body):
             "EMAIL_ONTVANGER lijkt geen geldig e-mailadres."
         )
 
-    msg = MIMEMultipart()
+    message = MIMEMultipart()
 
-    msg["From"] = sender
-    msg["To"] = recipient
-    msg["Subject"] = subject
+    message["From"] = sender
+    message["To"] = recipient
+    message["Subject"] = subject
 
-    msg.attach(
+    message.attach(
         MIMEText(
             body,
             "plain",
             "utf-8"
         )
+    )
+
+    print(
+        "[MAIL] Verbinden met smtp.gmail.com:587"
     )
 
     with smtplib.SMTP(
@@ -2182,7 +2783,7 @@ def send_email(subject, body):
         refused = server.sendmail(
             sender,
             [recipient],
-            msg.as_string()
+            message.as_string()
         )
 
         if refused:
@@ -2190,6 +2791,10 @@ def send_email(subject, body):
                 "Gmail SMTP heeft de ontvanger "
                 f"geweigerd: {refused}"
             )
+
+    print(
+        "[MAIL] Gmail SMTP heeft de mail aanvaard"
+    )
 
 
 def main():
@@ -2208,6 +2813,21 @@ def main():
         GEMINI_API_KEY
     )
 
+    require_env(
+        "GMAIL_ADRES",
+        GMAIL_ADRES
+    )
+
+    require_env(
+        "GMAIL_APP_WACHTWOORD",
+        GMAIL_APP_WACHTWOORD
+    )
+
+    require_env(
+        "EMAIL_ONTVANGER",
+        EMAIL_ONTVANGER
+    )
+
     print("[STAP 1] Inloggen bij Garmin")
 
     garmin = login_garmin_with_retry()
@@ -2216,6 +2836,7 @@ def main():
 
     if MODUS in {
         "conditie_evolutie",
+        "maandplan",
         "seizoen_plan"
     }:
         activities_to_fetch = 200
@@ -2234,7 +2855,9 @@ def main():
 
     print("[STAP 3] Slaap ophalen")
 
-    sleep = get_sleep_info(garmin)
+    sleep_info = get_sleep_info(
+        garmin
+    )
 
     print("[STAP 4] Weer ophalen")
 
@@ -2242,7 +2865,7 @@ def main():
 
     print("[STAP 5] Atleetmetrics ophalen")
 
-    metrics = detect_athlete_metrics(
+    athlete_metrics = detect_athlete_metrics(
         garmin,
         activities
     )
@@ -2255,7 +2878,9 @@ def main():
 
     today = now_be().date()
 
-    races = next_races(today)
+    upcoming_races = next_races(
+        today
+    )
 
     recent_races = previous_races(
         today
@@ -2263,63 +2888,94 @@ def main():
 
     phase = determine_training_phase(
         today,
-        races,
+        upcoming_races,
         recent_races
     )
 
     recovery = determine_recovery_risk(
         summary,
-        sleep,
+        sleep_info,
         USER_FEEDBACK
     )
 
     context = build_context(
         summary=summary,
-        sleep=sleep,
+        sleep_info=sleep_info,
         weather=weather,
         phase=phase,
-        races=races,
-        recent=recent_races,
+        races=upcoming_races,
+        recent_races=recent_races,
         recovery=recovery,
-        metrics=metrics
+        athlete_metrics=athlete_metrics
     )
 
     print("[STAP 7] Prompt bouwen")
 
-    prompt = build_prompt(context)
+    prompt = build_prompt(
+        context
+    )
 
     print("[STAP 8] Coachadvies genereren")
 
-    ai_text = call_gemini(prompt)
+    ai_text = call_gemini(
+        prompt
+    )
 
-    footer = f"""
+    recovery_reasons_text = "\n".join(
+        f"- {reason}"
+        for reason in recovery.get(
+            "reasons",
+            []
+        )
+    )
+
+    technical_footer = f"""
 
 --
 KORTE DATA-CHECK
 
 Datum: {today.isoformat()}
-Fase: {phase["phase"]}
-Primaire adaptatie: {phase["primary_adaptation"]}
-Blok: {context.get("training_block")}
+Modus: {MODUS}
 
-Slaapstatus: {sleep.get("status")}
-Slaapscore: {sleep.get("score")}
+Fase: {phase.get("phase")}
+Primaire adaptatie: {phase.get("primary_adaptation")}
+Fietsfocus: {phase.get("bike_focus")}
+Krachtfocus: {phase.get("strength_focus")}
+
+Trainingsblok: {context.get("training_block")}
+
+Slaapstatus: {sleep_info.get("status")}
+Slaapdatum: {sleep_info.get("date")}
+Slaapscore: {sleep_info.get("score")}
 
 Recovery risk: {recovery.get("level")} ({recovery.get("score")})
 
-FTP automatisch: {metrics.get("ftp")} ({metrics.get("ftp_source")})
-Rusthartslag automatisch: {metrics.get("resting_hr")} ({metrics.get("resting_hr_source")})
-Max HR automatisch: {metrics.get("max_hr")} ({metrics.get("max_hr_source")})
+Redenen recovery risk:
+{recovery_reasons_text}
 
-Power-sessies gevonden: {metrics.get("power_sessions_detected")}
+Weerbron: {weather.get("source")} - {weather.get("status")}
+
+FTP automatisch: {athlete_metrics.get("ftp")} ({athlete_metrics.get("ftp_source")})
+Rusthartslag automatisch: {athlete_metrics.get("resting_hr")} ({athlete_metrics.get("resting_hr_source")})
+Max HR automatisch: {athlete_metrics.get("max_hr")} ({athlete_metrics.get("max_hr_source")})
+
+Power-sessies gevonden: {athlete_metrics.get("power_sessions_detected")}
 Analyseperiode: {ANALYSEPERIODE_DAGEN} dagen
-Activiteiten geladen: {summary["data_quality"]["activities_loaded"]}
-Wedstrijden ingevoerd: {context["race_calendar"]["planned_races"]}
+
+Activiteiten geladen: {summary.get("data_quality", {}).get("activities_loaded")}
+Activiteiten met hartslag: {summary.get("data_quality", {}).get("activities_with_hr")}
+Fietsactiviteiten met power: {summary.get("data_quality", {}).get("bike_activities_with_power")}
+
+Wedstrijden ingevoerd: {context.get("race_calendar", {}).get("planned_races")}
+A-wedstrijden ingevoerd: {context.get("race_calendar", {}).get("planned_a_races")}
+
+Startniveau: wedstrijden kunnen uitrijden
+Seizoensambitie: competitief meedoen voor de prijzen
 """
 
     final_text = (
         ai_text.strip()
-        + footer
+        + technical_footer
     )
 
     print("[STAP 9] Mail verzenden")
