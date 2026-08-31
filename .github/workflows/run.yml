@@ -14,6 +14,7 @@ on:
         options:
           - dagadvies
           - week_schema
+          - maandplan
           - race_readiness
           - conditie_evolutie
           - seizoen_plan
@@ -25,7 +26,7 @@ on:
         type: string
 
       extra_context:
-        description: 'Extra context, bijvoorbeeld weinig tijd, materiaal, avondwedstrijd of reisdag'
+        description: 'Extra context, bijvoorbeeld gewenste maand, weinig tijd, materiaal, avondwedstrijd, groepsrit of reisdag'
         required: false
         default: ''
         type: string
@@ -45,9 +46,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.garminconnect
-          key: garmin-tokens-v4-${{ runner.os }}
+          key: garmin-tokens-v5-${{ runner.os }}
           restore-keys: |
-            garmin-tokens-v4-
+            garmin-tokens-v5-
 
       - name: Installeer dependencies
         run: pip install garminconnect google-genai
