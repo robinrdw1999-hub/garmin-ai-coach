@@ -7,6 +7,7 @@ import traceback
 import urllib.request
 import urllib.parse
 import shutil
+
 from datetime import datetime, timedelta, date
 from zoneinfo import ZoneInfo
 from email.mime.text import MIMEText
@@ -18,71 +19,115 @@ from google import genai
 
 TIMEZONE = ZoneInfo("Europe/Brussels")
 
-GARMIN_EMAIL = os.environ.get("GARMIN_EMAIL")
-GARMIN_WACHTWOORD = os.environ.get("GARMIN_WACHTWOORD")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+GARMIN_EMAIL = os.getenv("GARMIN_EMAIL")
+GARMIN_WACHTWOORD = os.getenv("GARMIN_WACHTWOORD")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-GMAIL_ADRES = os.environ.get("GMAIL_ADRES")
-GMAIL_APP_WACHTWOORD = os.environ.get("GMAIL_APP_WACHTWOORD")
-EMAIL_ONTVANGER = os.environ.get("EMAIL_ONTVANGER")
+GMAIL_ADRES = os.getenv("GMAIL_ADRES")
+GMAIL_APP_WACHTWOORD = os.getenv("GMAIL_APP_WACHTWOORD")
+EMAIL_ONTVANGER = os.getenv("EMAIL_ONTVANGER")
 
-EVENT_NAME = os.environ.get("GITHUB_EVENT_NAME", "manual")
-GEKOZEN_MODUS = os.environ.get("CHOSEN_MODUS") or "dagadvies"
+EVENT_NAME = os.getenv("GITHUB_EVENT_NAME", "manual")
+GEKOZEN_MODUS = os.getenv("CHOSEN_MODUS") or "dagadvies"
 
-USER_FEEDBACK = os.environ.get("USER_FEEDBACK") or "Geen actuele subjectieve feedback opgegeven."
-EXTRA_CONTEXT = os.environ.get("EXTRA_CONTEXT") or ""
+USER_FEEDBACK = (
+    os.getenv("USER_FEEDBACK")
+    or "Geen actuele subjectieve feedback opgegeven."
+)
 
-MODUS = "dagadvies" if EVENT_NAME == "schedule" else GEKOZEN_MODUS
+EXTRA_CONTEXT = os.getenv("EXTRA_CONTEXT") or ""
 
-ANALYSEPERIODE_DAGEN = "90"
-GEWICHT = "72"
-FOCUS_CONDITIEANALYSE = "wielervorm, koerspunch en herstel"
+MODUS = (
+    "dagadvies"
+    if EVENT_NAME == "schedule"
+    else GEKOZEN_MODUS
+)
+
+ANALYSEPERIODE_DAGEN = 180
+GEWICHT = 72
 
 WEATHER_LAT = 51.03
 WEATHER_LON = 4.10
 
-ATHLETE_PROFILE = {
-    "focus": "optimale vorm voor wielerwedstrijden",
-    "triathlon_priority": "Triatlon Donkmeer is puur voor het plezier en mag de wielervorm niet hypothekeren.",
-    "tone": "nuchter, menselijk, direct en licht coachend",
-    "max_main_sessions_per_day": 1
+
+SEASON_CONFIG = {
+    "preparation_start": "2026-10-01",
+    "race_season_start": "2027-05-01",
+    "race_season_end": "2027-09-15",
+    "target_race_count_min": 12,
+    "target_race_count_max": 16,
+    "max_consecutive_race_weekends": 2,
+    "target_a_races_min": 3,
+    "target_a_races_max": 4,
+    "discipline": "criterium- en wegwedstrijden",
+    "main_goal": "allround wielerprestatie ontwikkelen",
+    "development_goals": [
+        "gezond en consistent kunnen trainen",
+        "aerobe basis en duurzaamheid verbeteren",
+        "FTP en tijd tot uitputting rond drempel verbeteren",
+        "VO2max en herhaalde inspanningen boven drempel verbeteren",
+        "anaerobe capaciteit, acceleraties en sprint ontwikkelen",
+        "vermogen laat in een rit beter behouden",
+        "techniek, positionering, bochten en koersinzicht ontwikkelen",
+        "frisheid rond prioritaire wedstrijden bewaken"
+    ]
 }
 
+
+ATHLETE_PROFILE = {
+    "weight_kg": GEWICHT,
+    "primary_sport": "wielrennen",
+    "main_objective": (
+        "De best mogelijke allround renner worden voor criterium- "
+        "en wegwedstrijden. FTP is belangrijk, maar is slechts "
+        "een bouwsteen."
+    ),
+    "performance_hierarchy": [
+        "gezondheid, continuïteit en herstelbaarheid",
+        "aerobe basis en duurzaamheid",
+        "FTP en drempelduur",
+        "VO2max en herhaalde hoge intensiteit",
+        "anaerobe capaciteit, acceleratie en sprint",
+        "techniek en koersvaardigheid",
+        "wedstrijdspecifieke frisheid"
+    ],
+    "other_sports": (
+        "Alleen aanvullend en niet ten koste van fietskwaliteit "
+        "of herstel."
+    ),
+    "max_main_sessions_per_day": 1,
+    "max_quality_sessions_per_week": 2,
+    "default_block_structure": (
+        "Meestal drie opbouwweken en één herstelweek, "
+        "maar hersteldata gaan voor."
+    ),
+    "benchmark_frequency": (
+        "Hoogstens om de zes tot acht weken, met hetzelfde "
+        "protocol en dezelfde vermogensbron."
+    ),
+    "tone": "nuchter, menselijk, direct en licht coachend"
+}
+
+
+# Vul alleen echte wedstrijden in zodra de kalender bekend is.
 RACES = [
-    {
-        "date": "2026-08-01",
-        "name": "Triatlon Donkmeer",
-        "type": "triathlon_fun",
-        "priority": "C",
-        "note": "Plezierwedstrijd. Niet pieken. Geen agressieve taper. Geen onnodige loopbelasting vooraf."
-    },
-    {
-        "date": "2026-08-16",
-        "name": "Wielerwedstrijd Haasdonk",
-        "type": "cycling_race",
-        "priority": "A",
-        "note": "Eerste hoofddoel. Frisheid, koershardheid en punch zijn prioritair."
-    },
-    {
-        "date": "2026-08-22",
-        "name": "Wielerwedstrijd Sombeke",
-        "type": "cycling_race",
-        "priority": "A",
-        "note": "Tweede hoofddoel. Vorm onderhouden, niet opnieuw zware opbouw starten."
-    },
-    {
-        "date": "2026-08-28",
-        "name": "Atomse Pijl Denderhoutem",
-        "type": "cycling_fun_race",
-        "priority": "B",
-        "note": "Funwedstrijd Cycling Vlaanderen. Koersgericht rijden, maar niet behandelen als hoofdpiek."
-    }
+    # Voorbeeld:
+    #
+    # {
+    #     "date": "2027-05-09",
+    #     "name": "Naam wedstrijd",
+    #     "type": "cycling_race",
+    #     "priority": "C",
+    #     "note": "Vroege seizoenswedstrijd als koersprikkel."
+    # }
 ]
 
 
 def require_env(name, value):
     if not value:
-        raise Exception(f"Ontbrekende environment variable of secret: {name}")
+        raise RuntimeError(
+            f"Ontbrekende environment variable of secret: {name}"
+        )
 
 
 def now_be():
@@ -93,10 +138,16 @@ def safe_float(value, default=0.0):
     try:
         if value is None:
             return default
-        if str(value).lower() in ["onbekend", "niet gevonden"]:
+
+        if str(value).lower() in {
+            "onbekend",
+            "niet gevonden"
+        }:
             return default
+
         return float(value)
-    except Exception:
+
+    except (TypeError, ValueError):
         return default
 
 
@@ -104,38 +155,17 @@ def safe_int(value, default=0):
     try:
         if value is None:
             return default
-        if str(value).lower() in ["onbekend", "niet gevonden"]:
+
+        if str(value).lower() in {
+            "onbekend",
+            "niet gevonden"
+        }:
             return default
+
         return int(float(value))
-    except Exception:
+
+    except (TypeError, ValueError):
         return default
-
-
-def format_duration(seconds):
-    seconds = safe_float(seconds)
-    hours = int(seconds // 3600)
-    minutes = int((seconds % 3600) // 60)
-
-    if hours > 0:
-        return f"{hours}u{minutes:02d}"
-
-    return f"{minutes} min"
-
-
-def km(meters):
-    return round(safe_float(meters) / 1000, 1)
-
-
-def parse_garmin_datetime(value):
-    if not value:
-        return None
-
-    cleaned = str(value)[:19].replace("T", " ")
-
-    try:
-        return datetime.strptime(cleaned, "%Y-%m-%d %H:%M:%S").replace(tzinfo=TIMEZONE)
-    except Exception:
-        return None
 
 
 def recursive_find(data, keys):
@@ -146,51 +176,97 @@ def recursive_find(data, keys):
 
         for value in data.values():
             found = recursive_find(value, keys)
+
             if found is not None:
                 return found
 
-    if isinstance(data, list):
+    elif isinstance(data, list):
         for item in data:
             found = recursive_find(item, keys)
+
             if found is not None:
                 return found
 
     return None
 
 
-def get_first_available(activity, keys):
-    for key in keys:
-        if key in activity and activity[key] is not None:
-            return activity[key]
-    return None
+def parse_garmin_datetime(value):
+    if not value:
+        return None
+
+    try:
+        cleaned = str(value)[:19].replace("T", " ")
+
+        return datetime.strptime(
+            cleaned,
+            "%Y-%m-%d %H:%M:%S"
+        ).replace(tzinfo=TIMEZONE)
+
+    except ValueError:
+        return None
+
+
+def format_duration(seconds):
+    seconds = safe_float(seconds)
+
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+
+    if hours:
+        return f"{hours}u{minutes:02d}"
+
+    return f"{minutes} min"
 
 
 def classify_activity_type(type_key):
-    if not type_key:
-        return "other"
+    text = str(type_key or "").lower()
 
-    t = str(type_key).lower()
-
-    if "run" in t:
+    if "run" in text:
         return "run"
 
-    if "cycling" in t or "biking" in t or "ride" in t or "bike" in t:
+    if any(
+        term in text
+        for term in (
+            "cycling",
+            "biking",
+            "ride",
+            "bike"
+        )
+    ):
         return "bike"
 
-    if "swim" in t:
+    if "swim" in text:
         return "swim"
 
-    if "strength" in t or "hiit" in t or "cardio" in t:
+    if any(
+        term in text
+        for term in (
+            "strength",
+            "hiit",
+            "cardio"
+        )
+    ):
         return "strength"
 
     return "other"
 
 
 def is_hard_session(activity):
-    aerobic = safe_float(activity.get("aerobicTrainingEffect"))
-    anaerobic = safe_float(activity.get("anaerobicTrainingEffect"))
-    average_hr = safe_float(activity.get("averageHR"))
-    duration = safe_float(activity.get("duration"))
+    aerobic = safe_float(
+        activity.get("aerobicTrainingEffect")
+    )
+
+    anaerobic = safe_float(
+        activity.get("anaerobicTrainingEffect")
+    )
+
+    average_hr = safe_float(
+        activity.get("averageHR")
+    )
+
+    duration = safe_float(
+        activity.get("duration")
+    )
 
     if anaerobic >= 2.0:
         return True
@@ -205,121 +281,112 @@ def is_hard_session(activity):
 
 
 def login_garmin_with_retry():
-    token_dir = os.path.expanduser("~/.garminconnect")
-    os.makedirs(token_dir, exist_ok=True)
+    token_dir = os.path.expanduser(
+        "~/.garminconnect"
+    )
 
-    print("[GARMIN] Login proberen met bestaande token/cache")
+    os.makedirs(
+        token_dir,
+        exist_ok=True
+    )
+
+    print("[GARMIN] Login proberen met bestaande token")
 
     try:
-        garmin = Garmin(GARMIN_EMAIL, GARMIN_WACHTWOORD)
+        garmin = Garmin(
+            GARMIN_EMAIL,
+            GARMIN_WACHTWOORD
+        )
+
         garmin.login(token_dir)
+
         print("[GARMIN] Login gelukt")
+
         return garmin
 
     except Exception as first_error:
-        print("[GARMIN] Eerste loginpoging mislukt")
-        print(f"[GARMIN] Fout: {str(first_error)}")
-        print("[GARMIN] Oude Garmin token/cache wordt verwijderd en login wordt opnieuw geprobeerd")
+        print(
+            f"[GARMIN] Eerste login mislukt: "
+            f"{first_error}"
+        )
 
-        try:
-            if os.path.exists(token_dir):
-                shutil.rmtree(token_dir)
+        print(
+            "[GARMIN] Token/cache verwijderen "
+            "en opnieuw proberen"
+        )
 
-            os.makedirs(token_dir, exist_ok=True)
+        if os.path.exists(token_dir):
+            shutil.rmtree(token_dir)
 
-            garmin = Garmin(GARMIN_EMAIL, GARMIN_WACHTWOORD)
-            garmin.login(token_dir)
+        os.makedirs(
+            token_dir,
+            exist_ok=True
+        )
 
-            print("[GARMIN] Login gelukt na verwijderen van token/cache")
-            return garmin
+        garmin = Garmin(
+            GARMIN_EMAIL,
+            GARMIN_WACHTWOORD
+        )
 
-        except Exception as second_error:
-            print("[GARMIN] Tweede loginpoging ook mislukt")
-            print("[GARMIN] Mogelijke oorzaken:")
-            print("- Garmin wachtwoord is gewijzigd")
-            print("- GARMIN_EMAIL of GARMIN_WACHTWOORD secret is fout")
-            print("- Garmin vraagt opnieuw MFA/2FA")
-            print("- Garmin Connect blokkeert tijdelijk de login")
-            print("- Garmin API geeft tijdelijk 401/403 terug")
+        garmin.login(token_dir)
 
-            raise second_error
+        print(
+            "[GARMIN] Login gelukt na verwijderen cache"
+        )
+
+        return garmin
 
 
 def get_sleep_info(garmin):
+    attempts = []
+
     dates_to_try = [
         now_be().date(),
         now_be().date() - timedelta(days=1)
     ]
 
-    attempts = []
-
     for day in dates_to_try:
-        day_string = day.strftime("%Y-%m-%d")
+        day_string = day.isoformat()
 
         try:
-            sleep_data = garmin.get_sleep_data(day_string)
+            data = garmin.get_sleep_data(
+                day_string
+            )
 
-            attempts.append({
-                "date": day_string,
-                "raw_available": bool(sleep_data)
-            })
-
-            if not sleep_data:
+            if not data:
                 continue
 
-            score = None
-            quality = None
+            score = recursive_find(
+                data,
+                [
+                    "sleepScore",
+                    "overallSleepScore",
+                    "sleepScoreValue"
+                ]
+            )
 
-            daily = sleep_data.get("dailySleepDTO", {}) if isinstance(sleep_data, dict) else {}
+            quality = recursive_find(
+                data,
+                [
+                    "qualityDescription",
+                    "sleepScoreFeedback",
+                    "sleepQualityType",
+                    "sleepQuality"
+                ]
+            )
 
-            if isinstance(daily, dict):
-                score = daily.get("sleepScore")
+            score_int = safe_int(
+                score,
+                default=-1
+            )
 
-                if score is None:
-                    scores = daily.get("sleepScores", {})
-                    if isinstance(scores, dict):
-                        overall = scores.get("overall", {})
-                        if isinstance(overall, dict):
-                            score = overall.get("value")
-
-                quality = daily.get("qualityDescription")
-                if quality is None:
-                    quality = daily.get("sleepScoreFeedback")
-                if quality is None:
-                    quality = daily.get("sleepQuality")
-
-            if score is None:
-                score = recursive_find(
-                    sleep_data,
-                    [
-                        "sleepScore",
-                        "overallSleepScore",
-                        "sleepScoreValue"
-                    ]
-                )
-
-            if quality is None:
-                quality = recursive_find(
-                    sleep_data,
-                    [
-                        "qualityDescription",
-                        "sleepScoreFeedback",
-                        "sleepQualityType",
-                        "sleepQuality"
-                    ]
-                )
-
-            if score is not None:
-                score_int = safe_int(score, default=-1)
-
-                if score_int >= 0:
-                    return {
-                        "status": "beschikbaar",
-                        "date": day_string,
-                        "score": score_int,
-                        "quality": quality or "Geen kwaliteitslabel gevonden",
-                        "note": "Slaapscore gelezen uit Garmin sleep data."
-                    }
+            if score_int >= 0:
+                return {
+                    "status": "beschikbaar",
+                    "date": day_string,
+                    "score": score_int,
+                    "quality": quality
+                }
 
         except Exception as error:
             attempts.append({
@@ -332,44 +399,71 @@ def get_sleep_info(garmin):
         "date": None,
         "score": None,
         "quality": None,
-        "note": "Slaapscore kon niet betrouwbaar gelezen worden. Mogelijke oorzaken: Garmin nog niet gesynchroniseerd, geen slaapscore in account, of gewijzigde structuur in Garmin Connect.",
         "attempts": attempts
     }
 
 
 def get_weather_forecast():
     try:
-        base_url = "https://api.open-meteo.com/v1/forecast"
+        base_url = (
+            "https://api.open-meteo.com/v1/forecast"
+        )
 
         params = {
             "latitude": WEATHER_LAT,
             "longitude": WEATHER_LON,
-            "daily": "temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max",
+            "daily": (
+                "temperature_2m_max,"
+                "temperature_2m_min,"
+                "precipitation_probability_max,"
+                "wind_speed_10m_max"
+            ),
             "timezone": "Europe/Brussels",
             "forecast_days": 5
         }
 
-        url = base_url + "?" + urllib.parse.urlencode(params)
+        url = (
+            base_url
+            + "?"
+            + urllib.parse.urlencode(params)
+        )
 
-        with urllib.request.urlopen(url, timeout=15) as response:
-            data = json.loads(response.read().decode("utf-8"))
+        with urllib.request.urlopen(
+            url,
+            timeout=15
+        ) as response:
+            data = json.loads(
+                response.read().decode("utf-8")
+            )
 
         daily = data.get("daily", {})
-        days = daily.get("time", [])
-        tmax = daily.get("temperature_2m_max", [])
-        tmin = daily.get("temperature_2m_min", [])
-        rain = daily.get("precipitation_probability_max", [])
-        wind = daily.get("wind_speed_10m_max", [])
-
         forecast = []
 
-        for index, day in enumerate(days):
+        for index, day in enumerate(
+            daily.get("time", [])
+        ):
+            def value(key):
+                values = daily.get(key, [])
+
+                if index < len(values):
+                    return values[index]
+
+                return None
+
             forecast.append({
                 "date": day,
-                "temp_min_c": tmin[index] if index < len(tmin) else None,
-                "temp_max_c": tmax[index] if index < len(tmax) else None,
-                "rain_probability_pct": rain[index] if index < len(rain) else None,
-                "max_wind_kmh": wind[index] if index < len(wind) else None
+                "temp_min_c": value(
+                    "temperature_2m_min"
+                ),
+                "temp_max_c": value(
+                    "temperature_2m_max"
+                ),
+                "rain_probability_pct": value(
+                    "precipitation_probability_max"
+                ),
+                "max_wind_kmh": value(
+                    "wind_speed_10m_max"
+                )
             })
 
         return {
@@ -387,7 +481,10 @@ def get_weather_forecast():
         }
 
 
-def detect_athlete_metrics(garmin, activities):
+def detect_athlete_metrics(
+    garmin,
+    activities
+):
     result = {
         "ftp": None,
         "ftp_source": None,
@@ -395,96 +492,67 @@ def detect_athlete_metrics(garmin, activities):
         "resting_hr_source": None,
         "max_hr": None,
         "max_hr_source": None,
-        "powerdata": "niet gevonden",
         "power_sessions_detected": 0,
         "weight_kg": GEWICHT
     }
 
-    today = now_be().date()
-    dates_to_try = [
-        today,
-        today - timedelta(days=1),
-        today - timedelta(days=2),
-        today - timedelta(days=3),
-        today - timedelta(days=4),
-        today - timedelta(days=5),
-        today - timedelta(days=6)
-    ]
+    for offset in range(7):
+        day_string = (
+            now_be().date()
+            - timedelta(days=offset)
+        ).isoformat()
 
-    for day in dates_to_try:
-        day_string = day.strftime("%Y-%m-%d")
+        for method_name in (
+            "get_user_summary",
+            "get_heart_rates"
+        ):
+            if result["resting_hr"] is not None:
+                continue
 
-        if result["resting_hr"] is None:
+            if not hasattr(garmin, method_name):
+                continue
+
             try:
-                if hasattr(garmin, "get_user_summary"):
-                    summary = garmin.get_user_summary(day_string)
-                    resting = recursive_find(
-                        summary,
-                        [
-                            "restingHeartRate",
-                            "restingHR",
-                            "restingHr",
-                            "minHeartRate"
-                        ]
+                payload = getattr(
+                    garmin,
+                    method_name
+                )(day_string)
+
+                resting = recursive_find(
+                    payload,
+                    [
+                        "restingHeartRate",
+                        "restingHR",
+                        "restingHr"
+                    ]
+                )
+
+                if safe_int(resting) > 0:
+                    result["resting_hr"] = safe_int(
+                        resting
                     )
 
-                    if resting is not None:
-                        resting_int = safe_int(resting, default=0)
-                        if resting_int > 0:
-                            result["resting_hr"] = resting_int
-                            result["resting_hr_source"] = f"Garmin user summary {day_string}"
+                    result["resting_hr_source"] = (
+                        f"{method_name} {day_string}"
+                    )
+
             except Exception:
                 pass
 
-        if result["resting_hr"] is None:
-            try:
-                if hasattr(garmin, "get_heart_rates"):
-                    hr_data = garmin.get_heart_rates(day_string)
-                    resting = recursive_find(
-                        hr_data,
-                        [
-                            "restingHeartRate",
-                            "restingHR",
-                            "restingHr",
-                            "minHeartRate"
-                        ]
-                    )
-
-                    if resting is not None:
-                        resting_int = safe_int(resting, default=0)
-                        if resting_int > 0:
-                            result["resting_hr"] = resting_int
-                            result["resting_hr_source"] = f"Garmin heart rate data {day_string}"
-            except Exception:
-                pass
-
-    possible_profile_methods = [
+    for method_name in (
         "get_user_profile",
         "get_user_settings"
-    ]
+    ):
+        if not hasattr(garmin, method_name):
+            continue
 
-    profile_payloads = []
-
-    for method_name in possible_profile_methods:
         try:
-            if hasattr(garmin, method_name):
-                method = getattr(garmin, method_name)
-                payload = method()
+            payload = getattr(
+                garmin,
+                method_name
+            )()
 
-                if payload:
-                    profile_payloads.append({
-                        "method": method_name,
-                        "payload": payload
-                    })
-        except Exception:
-            pass
-
-    for item in profile_payloads:
-        payload = item["payload"]
-        method_name = item["method"]
-
-        if result["ftp"] is None:
-            ftp_value = recursive_find(
+            ftp = recursive_find(
                 payload,
                 [
                     "functionalThresholdPower",
@@ -495,14 +563,7 @@ def detect_athlete_metrics(garmin, activities):
                 ]
             )
 
-            if ftp_value is not None:
-                ftp_int = safe_int(ftp_value, default=0)
-                if ftp_int > 0:
-                    result["ftp"] = ftp_int
-                    result["ftp_source"] = method_name
-
-        if result["max_hr"] is None:
-            max_hr_value = recursive_find(
+            max_hr = recursive_find(
                 payload,
                 [
                     "maxHeartRate",
@@ -512,1076 +573,1460 @@ def detect_athlete_metrics(garmin, activities):
                 ]
             )
 
-            if max_hr_value is not None:
-                max_hr_int = safe_int(max_hr_value, default=0)
-                if max_hr_int > 0:
-                    result["max_hr"] = max_hr_int
-                    result["max_hr_source"] = method_name
+            if (
+                result["ftp"] is None
+                and safe_int(ftp) > 0
+            ):
+                result["ftp"] = safe_int(ftp)
+                result["ftp_source"] = method_name
+
+            if (
+                result["max_hr"] is None
+                and safe_int(max_hr) > 0
+            ):
+                result["max_hr"] = safe_int(max_hr)
+                result["max_hr_source"] = method_name
+
+        except Exception:
+            pass
 
     max_hr_values = []
-    power_sessions = 0
 
     for activity in activities:
-        type_key = activity.get("activityType", {}).get("typeKey")
-        discipline = classify_activity_type(type_key)
+        max_hr = safe_int(
+            activity.get("maxHR")
+        )
 
-        if activity.get("maxHR") is not None:
-            max_hr_values.append(safe_int(activity.get("maxHR")))
+        if max_hr:
+            max_hr_values.append(max_hr)
 
-        if discipline == "bike":
-            avg_power = get_first_available(
-                activity,
-                [
-                    "averagePower",
-                    "avgPower",
-                    "averageBikePower",
-                    "avgBikePower"
-                ]
-            )
+        type_key = activity.get(
+            "activityType",
+            {}
+        ).get("typeKey")
 
-            normalized_power = get_first_available(
-                activity,
-                [
-                    "normalizedPower",
-                    "normPower",
-                    "np"
-                ]
-            )
+        discipline = classify_activity_type(
+            type_key
+        )
 
-            if avg_power is not None or normalized_power is not None:
-                power_sessions += 1
+        if discipline != "bike":
+            continue
 
-            if result["ftp"] is None:
-                ftp_value = recursive_find(
-                    activity,
-                    [
-                        "functionalThresholdPower",
-                        "ftp",
-                        "cyclingFtp",
-                        "bikeFtp",
-                        "thresholdPower"
-                    ]
-                )
+        average_power = (
+            activity.get("averagePower")
+            or activity.get("avgPower")
+        )
 
-                if ftp_value is not None:
-                    ftp_int = safe_int(ftp_value, default=0)
-                    if ftp_int > 0:
-                        result["ftp"] = ftp_int
-                        result["ftp_source"] = "Garmin activity list"
+        normalized_power = (
+            activity.get("normalizedPower")
+            or activity.get("normPower")
+        )
 
-    if result["ftp"] is None:
-        bike_activity_ids = []
+        if (
+            average_power is not None
+            or normalized_power is not None
+        ):
+            result[
+                "power_sessions_detected"
+            ] += 1
 
-        for activity in activities[:30]:
-            type_key = activity.get("activityType", {}).get("typeKey")
-            discipline = classify_activity_type(type_key)
-
-            if discipline == "bike":
-                activity_id = activity.get("activityId")
-                if activity_id:
-                    bike_activity_ids.append(activity_id)
-
-        for activity_id in bike_activity_ids[:10]:
-            try:
-                if hasattr(garmin, "get_activity_details"):
-                    details = garmin.get_activity_details(activity_id)
-
-                    ftp_value = recursive_find(
-                        details,
-                        [
-                            "functionalThresholdPower",
-                            "ftp",
-                            "cyclingFtp",
-                            "bikeFtp",
-                            "thresholdPower"
-                        ]
-                    )
-
-                    if ftp_value is not None:
-                        ftp_int = safe_int(ftp_value, default=0)
-                        if ftp_int > 0:
-                            result["ftp"] = ftp_int
-                            result["ftp_source"] = f"Garmin activity details {activity_id}"
-                            break
-            except Exception:
-                pass
-
-    if result["max_hr"] is None and max_hr_values:
-        plausible_values = [
-            value for value in max_hr_values
-            if value and 120 <= value <= 220
+    if result["max_hr"] is None:
+        plausible = [
+            value
+            for value in max_hr_values
+            if 120 <= value <= 220
         ]
 
-        if plausible_values:
-            result["max_hr"] = max(plausible_values)
-            result["max_hr_source"] = "hoogste maxHR uit recente Garmin activiteiten"
+        if plausible:
+            result["max_hr"] = max(plausible)
+            result["max_hr_source"] = (
+                "recente activiteiten"
+            )
 
-    result["power_sessions_detected"] = power_sessions
+    power_sessions = result[
+        "power_sessions_detected"
+    ]
 
     if power_sessions >= 5:
         result["powerdata"] = "ja"
     elif power_sessions > 0:
         result["powerdata"] = "soms"
     else:
-        result["powerdata"] = "nee of niet zichtbaar in Garmin activity list"
+        result["powerdata"] = "nee"
 
-    if result["ftp"] is None:
-        result["ftp"] = "niet gevonden"
-
-    if result["resting_hr"] is None:
-        result["resting_hr"] = "niet gevonden"
-
-    if result["max_hr"] is None:
-        result["max_hr"] = "niet gevonden"
+    for key in (
+        "ftp",
+        "resting_hr",
+        "max_hr"
+    ):
+        if result[key] is None:
+            result[key] = "niet gevonden"
 
     return result
 
 
 def summarize_activities(activities):
-    current_time = now_be()
-    cutoff_7 = current_time - timedelta(days=7)
-    cutoff_28 = current_time - timedelta(days=28)
-    analysis_days = safe_int(ANALYSEPERIODE_DAGEN, 90)
-    cutoff_analysis = current_time - timedelta(days=analysis_days)
-
-    structured = []
+    current = now_be()
+    rows = []
 
     for activity in activities:
-        activity_time = parse_garmin_datetime(activity.get("startTimeLocal"))
-        type_key = activity.get("activityType", {}).get("typeKey")
-        discipline = classify_activity_type(type_key)
-
-        average_power = get_first_available(
-            activity,
-            [
-                "averagePower",
-                "avgPower",
-                "averageBikePower",
-                "avgBikePower"
-            ]
+        activity_time = parse_garmin_datetime(
+            activity.get("startTimeLocal")
         )
 
-        normalized_power = get_first_available(
-            activity,
-            [
-                "normalizedPower",
-                "normPower",
-                "np"
-            ]
+        type_key = activity.get(
+            "activityType",
+            {}
+        ).get("typeKey")
+
+        discipline = classify_activity_type(
+            type_key
         )
 
-        max_power = get_first_available(
-            activity,
-            [
-                "maxPower",
-                "maxBikePower"
-            ]
-        )
-
-        item = {
-            "name": activity.get("activityName"),
-            "type_key": type_key,
-            "discipline": discipline,
+        rows.append({
+            "date": (
+                activity_time.date().isoformat()
+                if activity_time
+                else None
+            ),
             "datetime": activity_time,
-            "date": activity_time.strftime("%Y-%m-%d") if activity_time else None,
-            "iso_week": activity_time.strftime("%G-W%V") if activity_time else None,
-            "distance_m": safe_float(activity.get("distance")),
-            "duration_sec": safe_float(activity.get("duration")),
-            "average_hr": activity.get("averageHR"),
+            "week": (
+                activity_time.strftime("%G-W%V")
+                if activity_time
+                else None
+            ),
+            "name": activity.get(
+                "activityName"
+            ),
+            "discipline": discipline,
+            "duration_sec": safe_float(
+                activity.get("duration")
+            ),
+            "distance_km": round(
+                safe_float(
+                    activity.get("distance")
+                ) / 1000,
+                1
+            ),
+            "average_hr": activity.get(
+                "averageHR"
+            ),
             "max_hr": activity.get("maxHR"),
-            "aerobic_te": activity.get("aerobicTrainingEffect"),
-            "anaerobic_te": activity.get("anaerobicTrainingEffect"),
-            "average_power": average_power,
-            "normalized_power": normalized_power,
-            "max_power": max_power,
+            "aerobic_te": activity.get(
+                "aerobicTrainingEffect"
+            ),
+            "anaerobic_te": activity.get(
+                "anaerobicTrainingEffect"
+            ),
+            "average_power": (
+                activity.get("averagePower")
+                or activity.get("avgPower")
+            ),
+            "normalized_power": (
+                activity.get("normalizedPower")
+                or activity.get("normPower")
+            ),
+            "max_power": (
+                activity.get("maxPower")
+                or activity.get("maxBikePower")
+            ),
             "hard": is_hard_session(activity)
-        }
+        })
 
-        structured.append(item)
+    rows.sort(
+        key=lambda row: (
+            row["datetime"]
+            or datetime.min.replace(
+                tzinfo=TIMEZONE
+            )
+        ),
+        reverse=True
+    )
 
-    def summarize_since(cutoff, days_window):
-        filtered = [
-            item for item in structured
-            if item["datetime"] and item["datetime"] >= cutoff
+    def summarize_window(days):
+        cutoff = (
+            current
+            - timedelta(days=days)
+        )
+
+        selected = [
+            row
+            for row in rows
+            if (
+                row["datetime"]
+                and row["datetime"] >= cutoff
+            )
         ]
+
+        training_dates = {
+            row["date"]
+            for row in selected
+        }
 
         by_discipline = {}
 
-        for discipline in ["bike", "run", "swim", "strength", "other"]:
+        for discipline in (
+            "bike",
+            "run",
+            "swim",
+            "strength",
+            "other"
+        ):
             subset = [
-                item for item in filtered
-                if item["discipline"] == discipline
+                row
+                for row in selected
+                if row["discipline"] == discipline
             ]
-
-            duration_total = sum(item["duration_sec"] for item in subset)
-            distance_total = sum(item["distance_m"] for item in subset)
 
             by_discipline[discipline] = {
                 "sessions": len(subset),
-                "duration_h": round(duration_total / 3600, 2),
-                "distance_km": round(distance_total / 1000, 1)
+                "duration_h": round(
+                    sum(
+                        row["duration_sec"]
+                        for row in subset
+                    ) / 3600,
+                    2
+                ),
+                "distance_km": round(
+                    sum(
+                        row["distance_km"]
+                        for row in subset
+                    ),
+                    1
+                )
             }
 
-        training_dates = sorted(set(item["date"] for item in filtered if item["date"]))
-        hard_sessions = [item for item in filtered if item["hard"]]
-
-        rest_days_estimate = None
-        if days_window == 7:
-            rest_days_estimate = max(0, 7 - len(training_dates))
-
-        longest_bike = max(
-            [item for item in filtered if item["discipline"] == "bike"],
-            key=lambda item: item["duration_sec"],
-            default=None
-        )
-
-        longest_run = max(
-            [item for item in filtered if item["discipline"] == "run"],
-            key=lambda item: item["duration_sec"],
-            default=None
-        )
-
-        longest_swim = max(
-            [item for item in filtered if item["discipline"] == "swim"],
-            key=lambda item: item["distance_m"],
-            default=None
-        )
-
-        bike_power_values = [
-            safe_float(item["average_power"])
-            for item in filtered
-            if item["discipline"] == "bike" and item["average_power"] is not None
-        ]
-
         return {
-            "total_sessions": len(filtered),
-            "total_duration_h": round(sum(item["duration_sec"] for item in filtered) / 3600, 2),
-            "hard_sessions": len(hard_sessions),
-            "training_days": len(training_dates),
-            "rest_days_estimate": rest_days_estimate,
-            "by_discipline": by_discipline,
-            "bike_avg_power_available_sessions": len(bike_power_values),
-            "bike_avg_power_mean": round(sum(bike_power_values) / len(bike_power_values), 1) if bike_power_values else None,
-            "longest_bike": {
-                "date": longest_bike["date"],
-                "duration": format_duration(longest_bike["duration_sec"]),
-                "distance_km": km(longest_bike["distance_m"])
-            } if longest_bike else None,
-            "longest_run": {
-                "date": longest_run["date"],
-                "duration": format_duration(longest_run["duration_sec"]),
-                "distance_km": km(longest_run["distance_m"])
-            } if longest_run else None,
-            "longest_swim": {
-                "date": longest_swim["date"],
-                "duration": format_duration(longest_swim["duration_sec"]),
-                "distance_km": km(longest_swim["distance_m"])
-            } if longest_swim else None
+            "total_sessions": len(selected),
+            "total_duration_h": round(
+                sum(
+                    row["duration_sec"]
+                    for row in selected
+                ) / 3600,
+                2
+            ),
+            "hard_sessions": sum(
+                row["hard"]
+                for row in selected
+            ),
+            "training_days": len(
+                training_dates
+            ),
+            "rest_days_estimate": (
+                max(
+                    0,
+                    days - len(training_dates)
+                )
+                if days == 7
+                else None
+            ),
+            "by_discipline": by_discipline
         }
 
-    recent_activities = []
-
-    for item in structured[:10]:
-        recent_activities.append({
-            "date": item["date"],
-            "name": item["name"],
-            "discipline": item["discipline"],
-            "duration": format_duration(item["duration_sec"]),
-            "distance_km": km(item["distance_m"]),
-            "avg_hr": item["average_hr"],
-            "aerobic_te": item["aerobic_te"],
-            "anaerobic_te": item["anaerobic_te"],
-            "avg_power": item["average_power"],
-            "normalized_power": item["normalized_power"],
-            "hard": item["hard"]
-        })
-
-    latest = structured[0] if structured else None
-
-    data_quality = {
-        "activities_loaded": len(activities),
-        "activities_with_datetime": len([item for item in structured if item["datetime"]]),
-        "activities_with_hr": len([item for item in structured if item["average_hr"] is not None]),
-        "activities_with_training_effect": len([
-            item for item in structured
-            if item["aerobic_te"] is not None or item["anaerobic_te"] is not None
-        ]),
-        "bike_activities_with_power": len([
-            item for item in structured
-            if item["discipline"] == "bike" and item["average_power"] is not None
-        ])
-    }
-
-    condition_evolution = build_condition_evolution(structured, cutoff_analysis)
-
-    return {
-        "data_quality": data_quality,
-        "last_7_days": summarize_since(cutoff_7, 7),
-        "last_28_days": summarize_since(cutoff_28, 28),
-        "condition_evolution": condition_evolution,
-        "latest_activity": {
-            "date": latest["date"],
-            "name": latest["name"],
-            "discipline": latest["discipline"],
-            "duration": format_duration(latest["duration_sec"]),
-            "distance_km": km(latest["distance_m"]),
-            "avg_hr": latest["average_hr"],
-            "aerobic_te": latest["aerobic_te"],
-            "anaerobic_te": latest["anaerobic_te"],
-            "avg_power": latest["average_power"],
-            "normalized_power": latest["normalized_power"],
-            "hard": latest["hard"]
-        } if latest else None,
-        "recent_activities": recent_activities
-    }
-
-
-def build_condition_evolution(structured, cutoff):
-    filtered = [
-        item for item in structured
-        if item["datetime"] and item["datetime"] >= cutoff
-    ]
+    cutoff = (
+        current
+        - timedelta(
+            days=ANALYSEPERIODE_DAGEN
+        )
+    )
 
     weeks = {}
 
-    for item in filtered:
-        week = item["iso_week"] or "unknown"
+    for row in rows:
+        if not row["datetime"]:
+            continue
 
-        if week not in weeks:
-            weeks[week] = {
-                "week": week,
-                "total_sessions": 0,
+        if row["datetime"] < cutoff:
+            continue
+
+        week_key = row["week"]
+
+        week = weeks.setdefault(
+            week_key,
+            {
+                "week": week_key,
                 "total_duration_h": 0.0,
+                "bike_duration_h": 0.0,
                 "hard_sessions": 0,
                 "bike_sessions": 0,
-                "bike_duration_h": 0.0,
-                "bike_distance_km": 0.0,
-                "run_sessions": 0,
-                "run_duration_h": 0.0,
-                "run_distance_km": 0.0,
-                "swim_sessions": 0,
-                "swim_duration_h": 0.0,
-                "bike_power_sessions": 0,
-                "bike_avg_power_sum": 0.0,
-                "bike_avg_hr_sessions": 0,
-                "bike_avg_hr_sum": 0.0
+                "power_values": [],
+                "max_power_values": []
             }
+        )
 
-        weeks[week]["total_sessions"] += 1
-        weeks[week]["total_duration_h"] += item["duration_sec"] / 3600
+        week["total_duration_h"] += (
+            row["duration_sec"] / 3600
+        )
 
-        if item["hard"]:
-            weeks[week]["hard_sessions"] += 1
+        week["hard_sessions"] += int(
+            row["hard"]
+        )
 
-        if item["discipline"] == "bike":
-            weeks[week]["bike_sessions"] += 1
-            weeks[week]["bike_duration_h"] += item["duration_sec"] / 3600
-            weeks[week]["bike_distance_km"] += item["distance_m"] / 1000
+        if row["discipline"] == "bike":
+            week["bike_sessions"] += 1
 
-            if item["average_power"] is not None:
-                weeks[week]["bike_power_sessions"] += 1
-                weeks[week]["bike_avg_power_sum"] += safe_float(item["average_power"])
+            week["bike_duration_h"] += (
+                row["duration_sec"] / 3600
+            )
 
-            if item["average_hr"] is not None:
-                weeks[week]["bike_avg_hr_sessions"] += 1
-                weeks[week]["bike_avg_hr_sum"] += safe_float(item["average_hr"])
+            if row["average_power"] is not None:
+                week["power_values"].append(
+                    safe_float(
+                        row["average_power"]
+                    )
+                )
 
-        if item["discipline"] == "run":
-            weeks[week]["run_sessions"] += 1
-            weeks[week]["run_duration_h"] += item["duration_sec"] / 3600
-            weeks[week]["run_distance_km"] += item["distance_m"] / 1000
-
-        if item["discipline"] == "swim":
-            weeks[week]["swim_sessions"] += 1
-            weeks[week]["swim_duration_h"] += item["duration_sec"] / 3600
+            if row["max_power"] is not None:
+                week[
+                    "max_power_values"
+                ].append(
+                    safe_float(
+                        row["max_power"]
+                    )
+                )
 
     weekly_trends = []
 
-    for week in sorted(weeks.keys()):
-        row = weeks[week]
+    for week_key in sorted(weeks):
+        week = weeks[week_key]
 
-        bike_avg_power = None
-        if row["bike_power_sessions"] > 0:
-            bike_avg_power = round(row["bike_avg_power_sum"] / row["bike_power_sessions"], 1)
+        power_values = week[
+            "power_values"
+        ]
 
-        bike_avg_hr = None
-        if row["bike_avg_hr_sessions"] > 0:
-            bike_avg_hr = round(row["bike_avg_hr_sum"] / row["bike_avg_hr_sessions"], 1)
+        max_power_values = week[
+            "max_power_values"
+        ]
 
         weekly_trends.append({
-            "week": row["week"],
-            "total_sessions": row["total_sessions"],
-            "total_duration_h": round(row["total_duration_h"], 2),
-            "hard_sessions": row["hard_sessions"],
-            "bike_sessions": row["bike_sessions"],
-            "bike_duration_h": round(row["bike_duration_h"], 2),
-            "bike_distance_km": round(row["bike_distance_km"], 1),
-            "bike_avg_power": bike_avg_power,
-            "bike_avg_hr": bike_avg_hr,
-            "run_sessions": row["run_sessions"],
-            "run_duration_h": round(row["run_duration_h"], 2),
-            "run_distance_km": round(row["run_distance_km"], 1),
-            "swim_sessions": row["swim_sessions"],
-            "swim_duration_h": round(row["swim_duration_h"], 2)
+            "week": week_key,
+            "total_duration_h": round(
+                week["total_duration_h"],
+                2
+            ),
+            "bike_duration_h": round(
+                week["bike_duration_h"],
+                2
+            ),
+            "bike_sessions": week[
+                "bike_sessions"
+            ],
+            "hard_sessions": week[
+                "hard_sessions"
+            ],
+            "bike_avg_power": (
+                round(
+                    sum(power_values)
+                    / len(power_values),
+                    1
+                )
+                if power_values
+                else None
+            ),
+            "highest_recorded_max_power": (
+                round(
+                    max(max_power_values),
+                    1
+                )
+                if max_power_values
+                else None
+            )
         })
 
-    recent_weeks = weekly_trends[-4:]
-    previous_weeks = weekly_trends[-8:-4]
+    recent_activities = []
 
-    def avg(values):
-        clean = [value for value in values if value is not None]
-        if not clean:
-            return None
-        return round(sum(clean) / len(clean), 2)
-
-    comparison = {
-        "recent_4w_avg_total_duration_h": avg([w["total_duration_h"] for w in recent_weeks]),
-        "previous_4w_avg_total_duration_h": avg([w["total_duration_h"] for w in previous_weeks]),
-        "recent_4w_avg_bike_duration_h": avg([w["bike_duration_h"] for w in recent_weeks]),
-        "previous_4w_avg_bike_duration_h": avg([w["bike_duration_h"] for w in previous_weeks]),
-        "recent_4w_avg_hard_sessions": avg([w["hard_sessions"] for w in recent_weeks]),
-        "previous_4w_avg_hard_sessions": avg([w["hard_sessions"] for w in previous_weeks]),
-        "recent_4w_avg_bike_power": avg([w["bike_avg_power"] for w in recent_weeks]),
-        "previous_4w_avg_bike_power": avg([w["bike_avg_power"] for w in previous_weeks])
-    }
+    for row in rows[:10]:
+        recent_activities.append({
+            "date": row["date"],
+            "name": row["name"],
+            "discipline": row["discipline"],
+            "duration": format_duration(
+                row["duration_sec"]
+            ),
+            "distance_km": row[
+                "distance_km"
+            ],
+            "average_hr": row[
+                "average_hr"
+            ],
+            "aerobic_te": row[
+                "aerobic_te"
+            ],
+            "anaerobic_te": row[
+                "anaerobic_te"
+            ],
+            "average_power": row[
+                "average_power"
+            ],
+            "normalized_power": row[
+                "normalized_power"
+            ],
+            "max_power": row[
+                "max_power"
+            ],
+            "hard": row["hard"]
+        })
 
     return {
-        "analysis_period_days": safe_int(ANALYSEPERIODE_DAGEN, 90),
-        "athlete_inputs": {
-            "metrics_source": "automatisch uit Garmin waar mogelijk",
-            "gewicht": GEWICHT,
-            "focus": FOCUS_CONDITIEANALYSE
+        "last_7_days": summarize_window(7),
+        "last_28_days": summarize_window(28),
+        "condition_evolution": {
+            "analysis_period_days": (
+                ANALYSEPERIODE_DAGEN
+            ),
+            "weekly_trends": weekly_trends
         },
-        "weekly_trends": weekly_trends,
-        "comparison_recent_vs_previous": comparison
+        "latest_activity": (
+            recent_activities[0]
+            if recent_activities
+            else None
+        ),
+        "recent_activities": recent_activities,
+        "data_limitations": [
+            (
+                "Activiteitssamenvattingen tonen "
+                "geen betrouwbare tijd in zones "
+                "of intervalverloop."
+            ),
+            (
+                "Gemiddeld ritvermogen is niet "
+                "geschikt om FTP-, VO2max- of "
+                "sprintprogressie op zichzelf te bewijzen."
+            ),
+            (
+                "Techniek, positionering en koersinzicht "
+                "zijn niet rechtstreeks uit deze Garmin-"
+                "samenvatting af te leiden."
+            )
+        ],
+        "data_quality": {
+            "activities_loaded": len(
+                activities
+            ),
+            "activities_with_datetime": sum(
+                row["datetime"] is not None
+                for row in rows
+            ),
+            "activities_with_hr": sum(
+                row["average_hr"] is not None
+                for row in rows
+            ),
+            "bike_activities_with_power": sum(
+                (
+                    row["discipline"] == "bike"
+                    and row["average_power"]
+                    is not None
+                )
+                for row in rows
+            )
+        }
     }
+
+
+def parse_race_date(race):
+    try:
+        return date.fromisoformat(
+            race["date"]
+        )
+
+    except (
+        KeyError,
+        ValueError,
+        TypeError
+    ):
+        return None
 
 
 def next_races(today):
     result = []
 
     for race in RACES:
-        race_date = datetime.strptime(race["date"], "%Y-%m-%d").date()
-        days_until = (race_date - today).days
+        race_date = parse_race_date(race)
 
-        if days_until >= 0:
-            enriched = dict(race)
-            enriched["days_until"] = days_until
-            result.append(enriched)
+        if race_date and race_date >= today:
+            item = dict(race)
 
-    return result
+            item["days_until"] = (
+                race_date - today
+            ).days
+
+            result.append(item)
+
+    return sorted(
+        result,
+        key=lambda item: item["date"]
+    )
 
 
-def determine_training_phase(today):
-    current_date = today
+def previous_races(
+    today,
+    lookback_days=14
+):
+    result = []
 
-    if current_date <= date(2026, 7, 27):
+    for race in RACES:
+        race_date = parse_race_date(race)
+
+        if not race_date:
+            continue
+
+        days_since = (
+            today - race_date
+        ).days
+
+        if 0 <= days_since <= lookback_days:
+            item = dict(race)
+            item["days_since"] = days_since
+            result.append(item)
+
+    return sorted(
+        result,
+        key=lambda item: item["date"],
+        reverse=True
+    )
+
+
+def race_calendar_summary():
+    season_start = date.fromisoformat(
+        SEASON_CONFIG[
+            "race_season_start"
+        ]
+    )
+
+    season_end = date.fromisoformat(
+        SEASON_CONFIG[
+            "race_season_end"
+        ]
+    )
+
+    races = []
+
+    for race in RACES:
+        race_date = parse_race_date(race)
+
+        if (
+            race_date
+            and season_start
+            <= race_date
+            <= season_end
+        ):
+            races.append(race)
+
+    races = sorted(
+        races,
+        key=lambda race: race["date"]
+    )
+
+    return {
+        "planned_races": len(races),
+        "planned_a_races": sum(
+            race.get("priority") == "A"
+            for race in races
+        ),
+        "target_races": (
+            f"{SEASON_CONFIG['target_race_count_min']} "
+            f"tot "
+            f"{SEASON_CONFIG['target_race_count_max']}"
+        ),
+        "calendar_complete": (
+            SEASON_CONFIG[
+                "target_race_count_min"
+            ]
+            <= len(races)
+            <= SEASON_CONFIG[
+                "target_race_count_max"
+            ]
+        ),
+        "races": races
+    }
+
+
+def phase_anchor(today):
+    anchors = [
+        date(2026, 10, 1),
+        date(2026, 12, 1),
+        date(2027, 2, 1),
+        date(2027, 3, 16),
+        date(2027, 4, 16),
+        date(2027, 5, 1)
+    ]
+
+    valid = [
+        anchor
+        for anchor in anchors
+        if anchor <= today
+    ]
+
+    if not valid:
+        return None
+
+    return max(valid)
+
+
+def determine_block(today):
+    anchor = phase_anchor(today)
+
+    if anchor is None:
+        return None
+
+    week = (
+        (today - anchor).days // 7
+    ) % 4 + 1
+
+    labels = {
+        1: "opbouw 1",
+        2: "opbouw 2",
+        3: "opbouw 3",
+        4: "herstelweek"
+    }
+
+    if week == 4:
+        rule = (
+            "Verlaag volume en zware belasting. "
+            "Haal geen gemiste trainingen in."
+        )
+    else:
+        rule = (
+            "Bouw gecontroleerd op en verhoog "
+            "maximaal één hoofdvariabele."
+        )
+
+    return {
+        "phase_anchor": anchor.isoformat(),
+        "week_number": week,
+        "week_type": labels[week],
+        "rule": rule
+    }
+
+
+def determine_training_phase(
+    today,
+    upcoming,
+    recent
+):
+    preparation_start = date.fromisoformat(
+        SEASON_CONFIG[
+            "preparation_start"
+        ]
+    )
+
+    season_start = date.fromisoformat(
+        SEASON_CONFIG[
+            "race_season_start"
+        ]
+    )
+
+    season_end = date.fromisoformat(
+        SEASON_CONFIG[
+            "race_season_end"
+        ]
+    )
+
+    next_race = (
+        upcoming[0]
+        if upcoming
+        else None
+    )
+
+    last_race = (
+        recent[0]
+        if recent
+        else None
+    )
+
+    if today < preparation_start:
         return {
-            "phase": "Bike build met gecontroleerd triatlononderhoud",
-            "goal": "Koersspecifieke fietsconditie opbouwen zonder extra loopvermoeidheid.",
+            "phase": "Overgangsperiode",
+            "primary_adaptation": (
+                "herstel en mentale reset"
+            ),
+            "goal": (
+                "Herstellen en opnieuw zin krijgen "
+                "in gestructureerde training."
+            ),
             "rules": [
-                "Fietsen is hoofdprioriteit.",
-                "Zwemmen mag techniek of herstel zijn.",
-                "Lopen blijft kort en comfortabel.",
-                "Geen zware loopintervallen.",
-                "Maximaal twee intensieve fietsprikkels per week.",
-                "Geen onnodige bricktrainingen."
+                "Train flexibel en rustig.",
+                "Geen vormtest nodig.",
+                "Introduceer kracht geleidelijk."
             ]
         }
 
-    if date(2026, 7, 28) <= current_date <= date(2026, 7, 31):
+    if today <= date(2026, 11, 30):
         return {
-            "phase": "Lichte taper richting Triatlon Donkmeer als plezierwedstrijd",
-            "goal": "Fris genoeg blijven voor Donkmeer, zonder echte triatlonpiek te creëren.",
+            "phase": "Basisfase 1",
+            "primary_adaptation": (
+                "aerobe basis, regelmaat "
+                "en algemene kracht"
+            ),
+            "goal": (
+                "Een duurzaam fundament bouwen "
+                "zonder vroege wedstrijdvorm na te jagen."
+            ),
             "rules": [
-                "Geen zware looptrainingen.",
-                "Korte fietsopeners zijn toegestaan.",
-                "Zwemmen alleen technisch en ontspannen.",
-                "Geen vermoeidheid creëren voor het wielerblok in augustus.",
-                "Triatlonvoorbereiding mag de fietsfocus niet verstoren."
+                "Meeste fietstijd rustig.",
+                "Maximaal één kwaliteitssessie per week.",
+                (
+                    "Eén of twee krachtsessies "
+                    "indien herstelbaar."
+                ),
+                (
+                    "Techniek mag laag belastend "
+                    "worden geoefend."
+                )
             ]
         }
 
-    if current_date == date(2026, 8, 1):
+    if today <= date(2027, 1, 31):
         return {
-            "phase": "Triatlon Donkmeer racedag",
-            "goal": "Genieten, gecontroleerd afwerken en geen diepe put graven.",
+            "phase": "Basisfase 2",
+            "primary_adaptation": (
+                "duurzaamheid en musculair "
+                "uithoudingsvermogen"
+            ),
+            "goal": (
+                "Langere aerobe belasting combineren "
+                "met progressieve sweet spot of tempo."
+            ),
             "rules": [
-                "Triatlon is geen hoofddoel.",
-                "Niet forceren in het lopen.",
-                "Fietsen stevig maar gecontroleerd.",
-                "Na afloop focus op herstel.",
-                "Geen extra training naast de wedstrijd."
+                (
+                    "Eén progressieve sweet-spot- "
+                    "of temposessie."
+                ),
+                (
+                    "Tweede kwaliteit alleen "
+                    "bij goed herstel."
+                ),
+                "Behoud rustige lange duur.",
+                "Behoud krachttraining."
             ]
         }
 
-    if date(2026, 8, 2) <= current_date <= date(2026, 8, 5):
+    if today <= date(2027, 3, 15):
         return {
-            "phase": "Herstel na Triatlon Donkmeer",
-            "goal": "Vermoeidheid laten zakken en fietsbenen opnieuw activeren.",
+            "phase": "Gerichte opbouw",
+            "primary_adaptation": (
+                "drempelvermogen en VO2max"
+            ),
+            "goal": (
+                "Aerobe capaciteit, FTP, "
+                "drempelduur en VO2max ontwikkelen."
+            ),
             "rules": [
-                "Geen intensieve looptraining.",
-                "Geen lange duurtraining.",
-                "Lichte fietsritten en herstel zijn prioritair.",
-                "Pas intensiteit toevoegen als benen fris aanvoelen.",
-                "Focus op herstel richting Haasdonk."
+                "Maximaal twee kwaliteitssessies.",
+                (
+                    "Bij voorkeur minimaal 48 uur "
+                    "tussen zware prikkels."
+                ),
+                (
+                    "Een zware groepsrit telt "
+                    "als kwaliteitssessie."
+                ),
+                "Behoud voldoende rustige duur."
             ]
         }
 
-    if date(2026, 8, 6) <= current_date <= date(2026, 8, 12):
+    if today <= date(2027, 4, 15):
         return {
-            "phase": "Laatste koersspecifieke build richting Haasdonk",
-            "goal": "Punch, VO2 en herhaalde versnellingen aanscherpen.",
+            "phase": "Koersspecifieke opbouw",
+            "primary_adaptation": (
+                "herhaalde hoge intensiteit "
+                "en anaerobe capaciteit"
+            ),
+            "goal": (
+                "Aerobe vorm vertalen naar versnellingen, "
+                "herstel tussen inspanningen en "
+                "sprint na vermoeidheid."
+            ),
             "rules": [
-                "Een of twee korte intensieve fietsprikkels in deze periode.",
-                "Geen loopbelasting die fietsfrisheid aantast.",
-                "Rustdagen respecteren.",
-                "Geen onnodig volume.",
-                "Koersspecifiek werken: korte versnellingen, positionering, tempowissels."
+                (
+                    "Drempel met een beperkte "
+                    "onderhoudsdosis behouden."
+                ),
+                (
+                    "Voeg herhaalde VO2max- of "
+                    "anaerobe inspanningen toe."
+                ),
+                (
+                    "Sprint kort, technisch "
+                    "en kwalitatief."
+                ),
+                "Krachttraining gaat naar onderhoud."
             ]
         }
 
-    if date(2026, 8, 13) <= current_date <= date(2026, 8, 16):
+    if today < season_start:
         return {
-            "phase": "Taper richting Wielerwedstrijd Haasdonk",
-            "goal": "Fris, scherp en explosief aan de start komen.",
+            "phase": "Wedstrijdvoorbereiding",
+            "primary_adaptation": (
+                "koersscherpte en vaardigheid"
+            ),
+            "goal": (
+                "Fysieke kwaliteiten combineren met "
+                "positionering, bochten, tempowissels "
+                "en sprinttiming."
+            ),
             "rules": [
-                "Volume sterk beperken.",
-                "Korte openers, geen zware blokken.",
-                "Geen looptraining meer tenzij zeer kort en los.",
-                "Slaap en herstel primeren.",
-                "Geen training die spierpijn of diepe vermoeidheid kan veroorzaken."
+                (
+                    "Gebruik een koerssimulatie of snelle "
+                    "groepsrit als kwaliteitssessie."
+                ),
+                "Geen taper zonder A-wedstrijd.",
+                "Vermoeidheid niet opstapelen.",
+                (
+                    "Techniek en positionering "
+                    "bewust oefenen."
+                )
             ]
         }
 
-    if date(2026, 8, 17) <= current_date <= date(2026, 8, 18):
-        return {
-            "phase": "Herstel na Haasdonk",
-            "goal": "Spiervermoeidheid en koersstress laten zakken.",
-            "rules": [
-                "Alleen herstelrit of rust.",
-                "Geen intensiteit.",
-                "Geen loopbelasting.",
-                "Evalueren hoe diep de wedstrijd zat."
-            ]
-        }
+    if today <= season_end:
+        if (
+            last_race
+            and last_race["days_since"] <= 2
+        ):
+            return {
+                "phase": "Herstel na wedstrijd",
+                "primary_adaptation": "herstel",
+                "goal": (
+                    "Wedstrijdvermoeidheid laten zakken "
+                    "en de volgende prikkel correct timen."
+                ),
+                "rules": [
+                    "Rust of zeer licht fietsen.",
+                    "Geen gemiste kilometers inhalen.",
+                    (
+                        "Laat feedback en herstel "
+                        "de hervatting bepalen."
+                    )
+                ]
+            }
 
-    if date(2026, 8, 19) <= current_date <= date(2026, 8, 21):
-        return {
-            "phase": "Aanscherpen richting Sombeke",
-            "goal": "Vorm behouden met minimale vermoeidheid.",
-            "rules": [
-                "Korte intensiteit mag, maar geen lange blokken.",
-                "Volume laag houden.",
-                "Geen zware krachttraining.",
-                "Frisheid is belangrijker dan extra trainingswinst.",
-                "Geen looptraining die de fietsbenen belast."
-            ]
-        }
+        if (
+            next_race
+            and next_race["days_until"] == 0
+        ):
+            return {
+                "phase": "Wedstrijddag",
+                "primary_adaptation": (
+                    "wedstrijdprestatie"
+                ),
+                "goal": (
+                    "Fris en voorbereid starten."
+                ),
+                "rules": [
+                    "Wedstrijd is de hoofdtraining.",
+                    "Gebruik een functionele warming-up.",
+                    (
+                        "Focus op veilige positionering "
+                        "en beslismomenten."
+                    )
+                ]
+            }
 
-    if current_date == date(2026, 8, 22):
-        return {
-            "phase": "Wielerwedstrijd Sombeke racedag",
-            "goal": "Koersprestatie maximaliseren.",
-            "rules": [
-                "Geen extra training.",
-                "Korte activatie indien nodig.",
-                "Voeding en warming-up concreet houden.",
-                "Focus op positionering en herhaalde versnellingen."
-            ]
-        }
+        if (
+            next_race
+            and next_race.get("priority") == "A"
+            and next_race["days_until"] <= 5
+        ):
+            return {
+                "phase": "Taper richting A-wedstrijd",
+                "primary_adaptation": (
+                    "frisheid met behoud van scherpte"
+                ),
+                "goal": (
+                    "Vermoeidheid verlagen zonder "
+                    "wedstrijdscherpte te verliezen."
+                ),
+                "rules": [
+                    "Verlaag het volume.",
+                    "Behoud korte openers.",
+                    (
+                        "Geen zware drempel-, VO2max- "
+                        "of krachttraining."
+                    )
+                ]
+            }
 
-    if date(2026, 8, 23) <= current_date <= date(2026, 8, 24):
         return {
-            "phase": "Herstel na Sombeke",
-            "goal": "Herstellen zonder vormverlies.",
+            "phase": "Wedstrijdperiode",
+            "primary_adaptation": (
+                "vorm onderhouden en toepassen"
+            ),
+            "goal": (
+                "Wedstrijden, herstel en gerichte "
+                "onderhoudstraining in balans brengen."
+            ),
             "rules": [
-                "Rust of zeer lichte fietsrit.",
-                "Geen intensiteit.",
-                "Geen loopbelasting.",
-                "Check vermoeidheid en slaap."
-            ]
-        }
-
-    if date(2026, 8, 25) <= current_date <= date(2026, 8, 27):
-        return {
-            "phase": "Aanscherpen richting Atomse Pijl Denderhoutem",
-            "goal": "Scherpte behouden voor de funwedstrijd, zonder nog vermoeidheid op te bouwen.",
-            "rules": [
-                "Korte koersprikkels toegestaan.",
-                "Geen lange duurtraining meer.",
-                "Geen diepe intervals.",
-                "Geen loopbelasting.",
-                "Frisheid belangrijker dan extra trainingswinst.",
-                "Denderhoutem is een funwedstrijd: scherp starten, maar niet forceren als het lichaam vermoeid is na Haasdonk en Sombeke."
-            ]
-        }
-
-    if current_date == date(2026, 8, 28):
-        return {
-            "phase": "Atomse Pijl Denderhoutem racedag",
-            "goal": "Koersgericht rijden met focus op fun, positionering en korte versnellingen.",
-            "rules": [
-                "Geen extra training naast de wedstrijd.",
-                "Korte warming-up met enkele korte versnellingen.",
-                "Niet starten alsof dit een A-piek is.",
-                "Gebruik de wedstrijd als scherpe koersprikkel.",
-                "Focus op veilig rijden, positionering en doseren op eventuele selectieve stukken."
+                (
+                    "Een wedstrijd telt als "
+                    "kwaliteitssessie."
+                ),
+                (
+                    "Plan geen twee zware intervals "
+                    "plus een wedstrijd."
+                ),
+                (
+                    "Gebruik wedstrijdarme blokken "
+                    "voor gerichte ontwikkeling."
+                ),
+                (
+                    "Plan maximaal twee "
+                    "wedstrijdweekends na elkaar."
+                )
             ]
         }
 
     return {
-        "phase": "Post-race overgang",
-        "goal": "Herstel, evaluatie en nieuwe doelen bepalen.",
+        "phase": "Overgang na seizoen",
+        "primary_adaptation": (
+            "herstel en evaluatie"
+        ),
+        "goal": (
+            "Herstellen, evalueren en pas daarna "
+            "een nieuwe opbouw starten."
+        ),
         "rules": [
-            "Geen automatische zware opbouw.",
-            "Eerst herstelstatus evalueren.",
-            "Nieuwe doelstelling bepalen voor volgende blok."
+            "Neem rustige of volledig vrije dagen.",
+            (
+                "Evalueer het volledige "
+                "prestatieprofiel."
+            ),
+            (
+                "Start niet onmiddellijk "
+                "een nieuw zwaar blok."
+            )
         ]
     }
 
 
-def determine_recovery_risk(summary, sleep_info, user_feedback):
-    reasons = []
+def determine_recovery_risk(
+    summary,
+    sleep,
+    feedback
+):
     risk_score = 0
+    reasons = []
 
-    lower_feedback = (user_feedback or "").lower()
+    feedback_text = (
+        feedback or ""
+    ).lower()
 
-    pain_words = [
+    warning_words = (
         "pijn",
         "blessure",
-        "knie",
-        "achilles",
-        "scheen",
-        "rug",
         "ziek",
         "koorts",
-        "verkouden",
         "oververmoeid",
         "uitgeput",
         "zeer moe",
-        "slecht geslapen",
         "zware benen",
         "lege benen",
         "geen energie"
+    )
+
+    if any(
+        word in feedback_text
+        for word in warning_words
+    ):
+        risk_score += 3
+
+        reasons.append(
+            "De subjectieve feedback bevat "
+            "een duidelijk waarschuwingssignaal."
+        )
+
+    sleep_score = sleep.get("score")
+
+    if sleep_score is None:
+        risk_score += 1
+
+        reasons.append(
+            "De slaapscore ontbreekt. "
+            "Herstel wordt daarom niet positief verondersteld."
+        )
+
+    elif sleep_score < 60:
+        risk_score += 3
+
+        reasons.append(
+            f"De slaapscore is zeer laag: "
+            f"{sleep_score}/100."
+        )
+
+    elif sleep_score < 70:
+        risk_score += 2
+
+        reasons.append(
+            f"De slaapscore is laag: "
+            f"{sleep_score}/100."
+        )
+
+    elif sleep_score < 78:
+        risk_score += 1
+
+        reasons.append(
+            f"De slaapscore is matig: "
+            f"{sleep_score}/100."
+        )
+
+    else:
+        reasons.append(
+            f"De slaapscore is bruikbaar tot goed: "
+            f"{sleep_score}/100."
+        )
+
+    last_7_days = summary[
+        "last_7_days"
     ]
 
-    for word in pain_words:
-        if word in lower_feedback:
-            risk_score += 3
-            reasons.append("Je feedback bevat een signaal rond pijn, ziekte of duidelijke vermoeidheid.")
-            break
-
-    if sleep_info.get("score") is not None:
-        score = safe_int(sleep_info.get("score"))
-
-        if score < 60:
-            risk_score += 3
-            reasons.append(f"Je slaapscore is zeer laag: {score}/100.")
-        elif score < 70:
-            risk_score += 2
-            reasons.append(f"Je slaapscore is laag: {score}/100.")
-        elif score < 78:
-            risk_score += 1
-            reasons.append(f"Je slaapscore is matig: {score}/100.")
-        else:
-            reasons.append(f"Je slaapscore is bruikbaar tot goed: {score}/100.")
-    else:
-        risk_score += 1
-        reasons.append("De slaapscore ontbreekt, dus de coach trekt geen positieve herstelconclusie.")
-
-    last_7 = summary.get("last_7_days", {})
-    hard_sessions = safe_int(last_7.get("hard_sessions"))
-    total_h = safe_float(last_7.get("total_duration_h"))
-    rest_days = last_7.get("rest_days_estimate")
+    hard_sessions = last_7_days[
+        "hard_sessions"
+    ]
 
     if hard_sessions >= 3:
         risk_score += 2
-        reasons.append(f"Er staan veel intensieve sessies in de laatste 7 dagen: {hard_sessions}.")
+
+        reasons.append(
+            f"Er waren {hard_sessions} intensieve "
+            "sessies in zeven dagen."
+        )
+
     elif hard_sessions == 2:
         risk_score += 1
-        reasons.append("Er staan twee intensieve sessies in de laatste 7 dagen.")
-    else:
-        reasons.append(f"Het aantal intensieve sessies in de laatste 7 dagen is beperkt: {hard_sessions}.")
 
-    if rest_days is not None and rest_days <= 1:
+        reasons.append(
+            "Er waren twee intensieve "
+            "sessies in zeven dagen."
+        )
+
+    rest_days = last_7_days[
+        "rest_days_estimate"
+    ]
+
+    if (
+        rest_days is not None
+        and rest_days <= 1
+    ):
         risk_score += 1
-        reasons.append("Er waren weinig rustdagen in de laatste 7 dagen.")
-    elif rest_days is not None:
-        reasons.append(f"Geschat aantal rustdagen in de laatste 7 dagen: {rest_days}.")
 
-    if total_h >= 10:
+        reasons.append(
+            "Er waren weinig rustdagen "
+            "in de laatste zeven dagen."
+        )
+
+    total_duration = last_7_days[
+        "total_duration_h"
+    ]
+
+    if total_duration >= 10:
         risk_score += 2
-        reasons.append(f"Het totaalvolume van de laatste 7 dagen is hoog: {total_h} uur.")
-    elif total_h >= 7:
+
+        reasons.append(
+            f"Het volume van de laatste zeven dagen "
+            f"is hoog: {total_duration} uur."
+        )
+
+    elif total_duration >= 7:
         risk_score += 1
-        reasons.append(f"Het totaalvolume van de laatste 7 dagen is matig tot hoog: {total_h} uur.")
-    else:
-        reasons.append(f"Het totaalvolume van de laatste 7 dagen blijft beheersbaar: {total_h} uur.")
+
+        reasons.append(
+            f"Het volume van de laatste zeven dagen "
+            f"is matig tot hoog: {total_duration} uur."
+        )
 
     if risk_score >= 5:
         level = "hoog"
-        allowed = [
-            "rust",
-            "mobiliteit",
-            "zeer lichte herstelrit 30 tot 45 min",
-            "easy swim techniek",
+
+        boundaries = [
+            "rust of maximaal een zeer lichte herstelrit",
             "geen intervals",
-            "geen lange duur",
-            "geen brick",
-            "geen zware looptraining",
-            "geen dubbele trainingsdag"
+            "geen benchmarktest",
+            "geen lange duurtraining"
         ]
+
     elif risk_score >= 3:
         level = "medium"
-        allowed = [
-            "lichte tot matige training",
-            "maximaal korte fietsprikkel als de benen goed voelen",
+
+        boundaries = [
             "volume niet verhogen",
-            "geen zware loopbelasting",
-            "geen dubbele trainingsdag",
+            (
+                "hoogstens een korte kwaliteitssessie "
+                "als de benen goed voelen"
+            ),
+            "geen benchmarktest",
             "geen diepe intervals"
         ]
+
     else:
         level = "laag"
-        allowed = [
-            "normale geplande fietstraining toegestaan",
-            "maximaal een hoofdtraining per dag",
-            "intensiteit alleen als dit past binnen de fase",
-            "looptraining ondergeschikt aan fietsfocus",
-            "geen onnodige extra sessies"
+
+        boundaries = [
+            "fasegebonden training toegestaan",
+            (
+                "maximaal twee kwaliteitssessies "
+                "per week"
+            ),
+            (
+                "bij voorkeur minimaal 48 uur "
+                "tussen zware prikkels"
+            )
         ]
 
     return {
         "level": level,
         "score": risk_score,
         "reasons": reasons,
-        "allowed_training_boundaries": allowed
+        "allowed_training_boundaries": boundaries
     }
 
 
-def build_coach_context(summary, sleep_info, weather, phase, races, recovery, athlete_metrics):
-    today = now_be().date()
-
+def build_context(
+    summary,
+    sleep,
+    weather,
+    phase,
+    races,
+    recent,
+    recovery,
+    metrics
+):
     return {
-        "today": today.strftime("%Y-%m-%d"),
+        "today": now_be().date().isoformat(),
         "weekday": now_be().strftime("%A"),
         "mode": MODUS,
         "athlete_profile": ATHLETE_PROFILE,
-        "athlete_condition_inputs": {
-            "analysis_period_days": ANALYSEPERIODE_DAGEN,
-            "metrics_source": "automatisch uit Garmin waar mogelijk",
-            "ftp": athlete_metrics.get("ftp"),
-            "ftp_source": athlete_metrics.get("ftp_source"),
-            "resting_hr": athlete_metrics.get("resting_hr"),
-            "resting_hr_source": athlete_metrics.get("resting_hr_source"),
-            "max_hr": athlete_metrics.get("max_hr"),
-            "max_hr_source": athlete_metrics.get("max_hr_source"),
-            "powerdata": athlete_metrics.get("powerdata"),
-            "power_sessions_detected": athlete_metrics.get("power_sessions_detected"),
-            "gewicht": athlete_metrics.get("weight_kg"),
-            "focus_conditieanalyse": FOCUS_CONDITIEANALYSE
-        },
-        "upcoming_races": races,
+        "season_config": SEASON_CONFIG,
         "current_training_phase": phase,
+        "training_block": determine_block(
+            now_be().date()
+        ),
+        "race_calendar": race_calendar_summary(),
+        "upcoming_races": races,
+        "recent_races": recent,
         "recovery_risk": recovery,
-        "sleep": sleep_info,
+        "sleep": sleep,
         "weather": weather,
         "garmin_summary": summary,
+        "athlete_metrics": metrics,
         "user_feedback": USER_FEEDBACK,
         "extra_context": EXTRA_CONTEXT,
         "hard_constraints": [
-            "Absolute focus ligt op optimale vorm voor de wielerwedstrijden.",
-            "Triatlon Donkmeer is plezier en mag geen trainingspiek of grote vermoeidheid veroorzaken.",
-            "Haasdonk en Sombeke zijn A-wedstrijden.",
-            "Atomse Pijl Denderhoutem is een B/funwedstrijd, geen hoofdpiek.",
-            "Geen medische claims.",
-            "Bij pijn, ziekte, lage slaapscore of hoge vermoeidheid: training afschalen.",
-            "Geen dubbele trainingsdagen voorstellen.",
-            "Maximaal een hoofdtraining per dag.",
-            "Geen zware looptrainingen in de aanloop naar de wielerwedstrijden.",
-            "Bij ontbrekende data expliciet zeggen dat de data ontbreekt.",
-            "Advies moet concreet en uitvoerbaar zijn.",
-            "Geen heroische taal, geen overdreven motivatie.",
-            "Leg altijd kort uit waarom het recovery risk level laag, medium of hoog is."
+            (
+                "Optimaliseer allround wielerprestatie. "
+                "FTP is belangrijk maar nooit het enige doel."
+            ),
+            (
+                "Gezondheid, continuïteit en herstelbaarheid "
+                "gaan voor een losse zware training."
+            ),
+            (
+                "Kies één primaire adaptatie per fase en week. "
+                "Onderhoud andere kwaliteiten met de "
+                "kleinst effectieve dosis."
+            ),
+            (
+                "Elke kwaliteitstraining moet in een "
+                "herkenbare progressie passen."
+            ),
+            (
+                "Verhoog per stap maximaal één hoofdvariabele: "
+                "duur, herhalingen, vermogen of totale omvang."
+            ),
+            (
+                "Maximaal twee kwaliteitssessies per week. "
+                "Een zware groepsrit of wedstrijd telt mee."
+            ),
+            (
+                "Behoud voldoende rustige duur en minstens "
+                "één rustdag of zeer lichte dag per week."
+            ),
+            (
+                "Gebruik meestal drie opbouwweken en één "
+                "herstelweek, maar hersteldata gaan voor."
+            ),
+            (
+                "Plan bij voorkeur minimaal 48 uur "
+                "tussen zware prikkels."
+            ),
+            (
+                "Geen dubbele trainingsdagen en maximaal "
+                "één hoofdtraining per dag."
+            ),
+            (
+                "Krachttraining is opbouwend in de basisfase "
+                "en onderhoudend richting wedstrijden."
+            ),
+            (
+                "Techniek, positionering en bochtenwerk mogen "
+                "als laag-belastende vaardigheidsfocus "
+                "worden opgenomen."
+            ),
+            (
+                "Geen benchmarktest bij medium of hoog "
+                "herstelrisico, pijn, ziekte of duidelijke "
+                "vermoeidheid."
+            ),
+            (
+                "Gebruik voor trendvergelijking hetzelfde "
+                "testprotocol en dezelfde vermogensbron. "
+                "Test hoogstens om de zes tot acht weken."
+            ),
+            (
+                "Verzin geen FTP, zones, HRV, trainingsbelasting, "
+                "wedstrijd of prestatieverbetering."
+            ),
+            (
+                "Gemiddeld ritvermogen is geen bewijs van "
+                "FTP-stijging of betere koersvorm."
+            ),
+            (
+                "Beoordeel sprint, duurzaamheid en herhaalde "
+                "inspanningen alleen wanneer de data "
+                "dit ondersteunen."
+            ),
+            (
+                "Praktische voeding en hydratatie mogen worden "
+                "benoemd, maar zonder medische of absolute claims."
+            ),
+            (
+                "Geef duidelijk aan wat feit uit de data is "
+                "en wat een coachinschatting is."
+            )
         ]
     }
 
 
 def build_prompt(context):
-    if MODUS == "week_schema":
-        output_instruction = """
-Maak een compact weekschema vanaf vandaag tot en met zondag.
-Focus op fietsvorm, frisheid en koersspecifieke prikkels.
-Geef per dag maximaal een hoofdtraining.
-De week mag geen triatlon-focus krijgen.
-
-Neem mee:
-- herstelstatus
-- belasting laatste 7 dagen
-- laatste workout indien relevant
-- eerstvolgende wedstrijd
-- wanneer intensiteit wel of niet logisch is
-"""
-        output_structure = """
-OUTPUTSTRUCTUUR:
-
+    structures = {
+        "dagadvies": """
 COACH TAKE
-Een korte alinea van 2 tot 4 zinnen. Zeg waar de week om draait.
-
-HERSTELSTATUS
-- Recovery risk: laag, medium of hoog
-- Geef 2 tot 4 concrete redenen waarom dit level geldt.
-
-WEEKDOEL
-Leg in 2 tot 4 zinnen uit wat deze week moet opleveren.
-
-WEEKSCHEMA
-Geef per dag maximaal één hoofdtraining.
-Per dag:
-- type dag
-- training of rust
-- duur
-- intensiteit
-- aandachtspunt
-
-NIET DOEN DEZE WEEK
-Geef 3 tot 5 praktische zaken die de vorm richting de wielerwedstrijden kunnen schaden.
-
-WEDSTRIJDFOCUS
-Leg kort de link met Haasdonk, Sombeke, Atomse Pijl Denderhoutem en Triatlon Donkmeer.
-"""
-
-    elif MODUS == "race_readiness":
-        output_instruction = """
-Geef een race-readiness check voor de eerstvolgende wielerwedstrijd.
-Focus op frisheid, scherpte, risico's en de laatste 72 uur.
-
-Neem mee:
-- recovery risk en concrete reden
-- laatste training
-- wat nog wel doen
-- wat absoluut niet meer doen
-- warming-up focus
-- koersfocus
-"""
-        output_structure = """
-OUTPUTSTRUCTUUR:
-
-COACH TAKE
-Een korte alinea van 2 tot 4 zinnen. Zeg scherp of de atleet vooral moet rusten, aanscherpen of vertrouwen houden.
-
-READINESS
-- Geef een nuchtere inschatting: goed, oké met marge, of voorzichtig.
-- Geen percentages verzinnen.
-
-HERSTELSTATUS
-- Recovery risk: laag, medium of hoog
-- Geef 2 tot 4 concrete redenen waarom dit level geldt.
-
-LAATSTE 72 UUR
-Geef concreet wat nog wel en niet moet gebeuren.
-
-WARMING-UP
-Geef een korte, praktische warming-up.
-
-KOERSFOCUS
-Geef 3 tot 5 koersgerichte aandachtspunten.
-
-NIET DOEN
-Geef 3 tot 5 zaken die nu niet slim zijn.
-"""
-
-    elif MODUS == "conditie_evolutie":
-        output_instruction = """
-Maak een grote conditieanalyse over de opgegeven analyseperiode.
-Focus op evolutie in tijd, niet op alleen vandaag.
-Het doel is begrijpen of de atleet sterker, stabieler of vermoeider wordt richting de wielerwedstrijden.
-
-Neem mee:
-- weektrends uit de Garmin-data
-- fietsvolume
-- intensieve sessies
-- koerspunch
-- herstelbalans
-- loop- en triatlonbelasting
-- beschikbare powerdata indien aanwezig
-- automatisch gevonden FTP, rusthartslag en max HR indien beschikbaar
-- beperkingen in de data
-"""
-        output_structure = """
-OUTPUTSTRUCTUUR:
-
-SAMENVATTING
-Geef in 4 tot 6 bullets de grote lijn:
-- conditie stijgend, stabiel of dalend
-- fietsvorm
-- herstel
-- belangrijkste risico richting de wedstrijden
-
-TREND IN TIJD
-Analyseer de evolutie per week of per blok.
-Gebruik concrete cijfers uit de context waar mogelijk.
-Verzin geen cijfers.
-
-FIETSVORM
-Bespreek:
-- volume
-- regelmaat
-- langste ritten
-- intensieve fietsprikkels
-- eventuele powerdata
-- eventuele FTP indien gevonden
-- of de trend logisch is richting Haasdonk en Sombeke
-
-KOERSPUNCH
-Bespreek of er genoeg korte, intensieve of koersspecifieke prikkels zichtbaar zijn.
-Als de data dit niet goed toont, zeg dat expliciet.
-
-HERSTELBALANS
-Bespreek:
-- recovery risk
-- slaapdata indien beschikbaar
-- rusthartslag indien gevonden
-- rustdagen
-- intensieve sessies
-- tekenen van opstapelende vermoeidheid
-
-TRIATLONBELASTING
-Leg uit of zwemmen en lopen helpen, neutraal zijn of de fietsfocus kunnen verstoren.
-
-WAT BEHOUDEN
-Geef 3 tot 5 concrete zaken die goed lopen.
-
-WAT AANPASSEN
-Geef 3 tot 5 concrete aanpassingen richting de wielerwedstrijden.
-
-CONCLUSIE VOOR DE KOMENDE 2 WEKEN
-Geef een korte coachende conclusie.
-"""
-
-    else:
-        output_instruction = """
-Geef een dagadvies voor vandaag en een target voor morgen.
-Deze modus combineert dagadvies, herstelcheck en korte feedback op de laatste workout.
-
-Neem mee:
-- recovery risk en concrete reden
-- korte feedback op de meest recente Garmin-activiteit
-- training vandaag of rust
-- target voor morgen
-- wat vandaag niet slim is
-- link met de wielerwedstrijden
-"""
-        output_structure = """
-OUTPUTSTRUCTUUR:
-
-COACH TAKE
-Een korte alinea van 2 tot 4 zinnen. Menselijk, direct en bruikbaar.
-Zeg meteen wat vandaag de bedoeling is.
 
 TYPE DAG
-Kies 1 label:
-- Rustdag
-- Hersteldag
-- Duurdag
-- Koersprikkel
-- Openers
-- Race day
-- Evaluatiedag
 
 HERSTELSTATUS
-- Recovery risk: laag, medium of hoog
-- Geef 2 tot 4 concrete redenen waarom dit level geldt.
-- Gebruik de redenen uit de context. Verzin niets bij.
 
 LAATSTE WORKOUT
-- Geef alleen een korte interpretatie als de laatste Garmin-activiteit relevant is.
-- Maximaal 3 bullets.
-- Leg uit of dit eerder een goede prikkel, onderhoud, herstel of mogelijke vermoeidheidsfactor was.
 
 VANDAAG
 - Exacte training of rust
 - Duur
 - Intensiteit
-- Concrete uitvoering in stappen
-- Wanneer afbreken of afschalen
+- Uitvoering
+- Afbreekcriteria
 
-WAAROM
-Leg kort uit waarom deze training vandaag logisch is richting de wielerwedstrijden.
+TRAININGSDOEL
+Welke capaciteit of vaardigheid wordt ontwikkeld?
+
+WAAROM NU
+Leg de link met:
+- huidige fase
+- huidig trainingsblok
+- recente belasting
+- volgende wedstrijd
 
 MORGEN
-Geef een target voor morgen. Hou het kort.
 
 NIET DOEN
-Geef 2 tot 4 concrete dingen die vandaag niet slim zijn.
-Maak dit praktisch, niet generiek.
 
-WEDSTRIJDFOCUS
-Leg in 2 tot 4 zinnen de link met Haasdonk, Sombeke, Atomse Pijl Denderhoutem en Triatlon Donkmeer.
+PROGRESSIE
+Wat wordt opgebouwd, onderhouden of bewust niet geprikkeld?
+
+FEITEN EN COACHINSCHATTING
+Maak kort het onderscheid.
+""",
+
+        "week_schema": """
+COACH TAKE
+
+HERSTELSTATUS
+
+WEEKDOEL
+
+PRIMAIRE ADAPTATIE VAN DE WEEK
+
+ONDERHOUDSDOELEN
+
+WEEKSCHEMA
+Geef per dag:
+- maximaal één hoofdtraining
+- duur
+- intensiteit
+- concrete uitvoering
+- trainingsdoel
+
+BELASTINGSLOGICA
+Leg uit waar de zware dagen, rustige dagen en herstelmomenten staan.
+
+PROGRESSIE TEGENOVER DE VORIGE VERGELIJKBARE WEEK
+
+VAARDIGHEID EN KOERSSPECIFIEKE FOCUS
+
+NIET DOEN
+
+FEITEN EN COACHINSCHATTING
+""",
+
+        "race_readiness": """
+COACH TAKE
+
+READINESS
+Kies:
+- goed
+- oké met marge
+- voorzichtig
+
+Gebruik geen percentage.
+
+HERSTELSTATUS
+
+LAATSTE 72 UUR
+
+WARMING-UP
+
+KOERSFOCUS
+Bespreek:
+- positionering
+- bochten
+- inspanningsverdeling
+- beslismomenten
+
+FYSIEKE FOCUS
+Welke capaciteit moet gebruikt worden en wat moet niet meer opgebouwd worden?
+
+HERSTEL NA DE WEDSTRIJD
+
+NIET DOEN
+""",
+
+        "conditie_evolutie": """
+SAMENVATTING
+
+TRAININGSCONTINUÏTEIT EN BELASTINGSTREND
+
+AEROBE BASIS EN DUURZAAMHEID
+
+FTP EN DREMPEL
+Maak onderscheid tussen:
+- gemeten waarde
+- indirecte signalen
+- ontbrekende data
+
+VO2MAX EN HERHAALDE HOGE INTENSITEIT
+
+ANAEROBE CAPACITEIT EN SPRINT
+
+HERSTELBALANS
+
+KRACHT EN AANVULLENDE SPORTEN
+
+VAARDIGHEDEN EN KOERSSPECIFICITEIT
+Beoordeel dit alleen als de data het werkelijk tonen.
+
+WAT BEHOUDEN
+
+WAT AANPASSEN
+
+CONCLUSIE VOOR DE KOMENDE TWEE WEKEN
+""",
+
+        "seizoen_plan": """
+COACH TAKE
+
+HUIDIGE SITUATIE
+
+PRESTATIEPROFIEL
+Bespreek:
+- ontwikkeldoelen
+- beschikbare data
+- databeperkingen
+
+SEIZOENSOPBOUW PER FASE
+
+DOEL PER CAPACITEIT
+Bespreek:
+- aerobe basis
+- FTP
+- drempelduur
+- VO2max
+- anaerobe capaciteit
+- sprint
+- duurzaamheid
+- kracht
+- techniek
+
+WEDSTRIJDPLANNING
+Gebruik alleen werkelijk ingevoerde wedstrijden.
+
+HERSTEL- EN BENCHMARKMOMENTEN
+
+KOMENDE VIER WEKEN
+
+BELANGRIJKSTE AANPASSING
 """
+    }
 
-    prompt = f"""
-Je bent een nuchtere, ervaren wielercoach met basiskennis triatlon.
-Je schrijft alsof je jouw atleet kort en duidelijk coacht via mail.
-Gebruik gewone coachtaal, geen rapporttaal.
+    structure = structures.get(
+        MODUS,
+        structures["dagadvies"]
+    )
 
-De atleet wil optimaal presteren in de wielerwedstrijden in augustus 2026.
-De triatlon op 1 augustus is puur voor het plezier en mag de wielervorm niet schaden.
+    return f"""
+Je bent een nuchtere, ervaren wielercoach voor criterium- en wegwielrennen.
 
-Toon:
-- menselijk
-- direct
-- kort coachend
-- concreet
-- licht motiverend
-- geen clichés
-- geen heroische taal
-- geen overdreven peptalk
-- geen medische claims
+Schrijf kort, menselijk, direct en concreet in het Nederlands.
 
-Belangrijk:
-- Bij twijfel kies je herstel of lagere intensiteit.
-- Adviseer nooit zwaarder dan de recovery boundaries toestaan.
-- Maximaal een hoofdtraining per dag.
-- Lopen is ondergeschikt aan fietsfrisheid.
-- Zwemmen mag vooral herstel of techniek zijn.
-- De laatste workout mag benoemd worden, maar maak er geen aparte lange analyse van tenzij die duidelijk relevant is.
-- Respecteer expliciet de prioriteit van de wedstrijden:
-  1. Haasdonk: A-wedstrijd
-  2. Sombeke: A-wedstrijd
-  3. Atomse Pijl Denderhoutem: B/funwedstrijd
-  4. Triatlon Donkmeer: C/plezierwedstrijd
+Het doel is niet een zo hoog mogelijke FTP op papier, maar de best mogelijke allround wedstrijdprestatie van mei tot midden september 2027.
 
-Vermijd droge formuleringen zoals:
-- op basis van de beschikbare data
-- hieruit kan geconcludeerd worden
-- de belasting suggereert
+FTP is een belangrijke bouwsteen naast:
+- aerobe duurzaamheid
+- drempelduur
+- VO2max
+- herhaalde inspanningen
+- anaerobe capaciteit
+- sprint
+- kracht
+- techniek
+- herstel
+- koersinzicht
 
-Gebruik liever coachtaal zoals:
-- je hebt genoeg belasting staan
-- vandaag niet bewijzen dat je fit bent
-- een korte prikkel is genoeg
-- frisheid is vandaag belangrijker dan volume
-- geen extra loopje toevoegen
-- niet van deze sessie een test maken
+Coachregels:
 
-Specifieke opdracht voor deze run:
-{output_instruction}
+- Volg altijd de recovery boundaries en hard constraints uit de context.
+- Kies per fase en per week één primaire adaptatie.
+- Onderhoud andere kwaliteiten met de kleinst effectieve dosis.
+- Gebruik rustige duur, tempo, sweet spot, drempel, VO2max, anaerobe prikkels, sprint, kracht en techniek alleen wanneer ze bij de fase en herstelstatus passen.
+- Benoem bij iedere training het doel, de plaats in het blok en de beoogde progressie.
+- Verhoog per progressiestap maximaal één hoofdvariabele.
+- Meer training is niet automatisch beter.
+- Een zware groepsrit of wedstrijd vervangt een kwaliteitssessie en komt er niet bovenop.
+- Gebruik herstel als combinatie van slaap, recente belasting en subjectieve feedback.
+- Een losse goede of slechte waarde beslist nooit alleen.
+- Als interval-, lap- of tijdreeksdata ontbreken, claim dan geen bewezen progressie in FTP, VO2max, sprint of duurzaamheid.
+- Gemiddeld vermogen van een volledige rit is geen bewijs van wedstrijdvorm.
+- Adviseer een benchmark alleen bij laag herstelrisico, na een passend trainingsblok en wanneer een vergelijkbare test minstens zes weken geleden was.
+- Als de testhistoriek ontbreekt, zeg dat expliciet.
+- Maak duidelijk onderscheid tussen feiten uit de data en coachinschattingen.
+- Vermijd clichés, heroische taal, medische claims en verzonnen cijfers.
 
-{output_structure}
+OUTPUTSTRUCTUUR:
+
+{structure}
 
 Context in JSON:
+
 {json.dumps(context, ensure_ascii=False, indent=2)}
 """
 
-    return prompt
-
 
 def call_gemini(prompt):
-    require_env("GEMINI_API_KEY", GEMINI_API_KEY)
+    require_env(
+        "GEMINI_API_KEY",
+        GEMINI_API_KEY
+    )
 
-    client = genai.Client(api_key=GEMINI_API_KEY)
+    client = genai.Client(
+        api_key=GEMINI_API_KEY
+    )
 
     models_to_try = [
         "gemini-2.5-flash",
@@ -1593,218 +2038,310 @@ def call_gemini(prompt):
     for model_name in models_to_try:
         for attempt in range(3):
             try:
-                print(f"Gemini call: {model_name}, poging {attempt + 1}/3")
-
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=prompt
+                print(
+                    f"[GEMINI] Model {model_name}, "
+                    f"poging {attempt + 1}/3"
                 )
 
-                text = response.text
+                response = (
+                    client.models.generate_content(
+                        model=model_name,
+                        contents=prompt
+                    )
+                )
 
-                if text and text.strip():
-                    return text.strip()
+                if (
+                    response.text
+                    and response.text.strip()
+                ):
+                    return response.text.strip()
 
             except Exception as error:
                 last_error = error
                 error_text = str(error).lower()
 
-                temporary_error = False
-
-                if "503" in error_text:
-                    temporary_error = True
-                if "unavailable" in error_text:
-                    temporary_error = True
-                if "rate" in error_text:
-                    temporary_error = True
-                if "429" in error_text:
-                    temporary_error = True
-                if "resource_exhausted" in error_text:
-                    temporary_error = True
+                temporary_error = any(
+                    token in error_text
+                    for token in (
+                        "503",
+                        "unavailable",
+                        "rate",
+                        "429",
+                        "resource_exhausted"
+                    )
+                )
 
                 if temporary_error:
                     time.sleep(10)
                 else:
                     raise
 
-    raise Exception(f"Gemini gaf geen bruikbare output. Laatste fout: {last_error}")
+    raise RuntimeError(
+        "Gemini gaf geen bruikbare output. "
+        f"Laatste fout: {last_error}"
+    )
 
 
 def subject_for_mode(context):
-    races = context.get("upcoming_races", [])
-    next_race = races[0] if races else None
+    if MODUS == "seizoen_plan":
+        return (
+            "Wielercoach - seizoensplanning "
+            "en wielervorm 2026-2027"
+        )
 
-    if next_race:
-        race_part = f"{next_race['name']} over {next_race['days_until']} dagen"
+    races = context.get(
+        "upcoming_races",
+        []
+    )
+
+    if races:
+        target = (
+            f"{races[0]['name']} over "
+            f"{races[0]['days_until']} dagen"
+        )
     else:
-        race_part = "geen komende wedstrijd gevonden"
+        target = context[
+            "current_training_phase"
+        ]["phase"]
 
-    if MODUS == "week_schema":
-        return f"Wielercoach - weekschema richting {race_part}"
+    labels = {
+        "week_schema": "weekschema",
+        "race_readiness": "race readiness",
+        "conditie_evolutie": "conditie-evolutie",
+        "dagadvies": "dagadvies"
+    }
 
-    if MODUS == "race_readiness":
-        return f"Wielercoach - race readiness richting {race_part}"
+    label = labels.get(
+        MODUS,
+        "dagadvies"
+    )
 
-    if MODUS == "conditie_evolutie":
-        return f"Wielercoach - conditie-evolutie laatste {safe_int(ANALYSEPERIODE_DAGEN, 90)} dagen"
-
-    return f"Wielercoach - dagadvies richting {race_part}"
+    return (
+        f"Wielercoach - {label} "
+        f"richting {target}"
+    )
 
 
 def send_email(subject, body):
-    if not GMAIL_ADRES:
-        raise Exception("GMAIL_ADRES ontbreekt.")
+    require_env(
+        "GMAIL_ADRES",
+        GMAIL_ADRES
+    )
 
-    if not GMAIL_APP_WACHTWOORD:
-        raise Exception("GMAIL_APP_WACHTWOORD ontbreekt.")
+    require_env(
+        "GMAIL_APP_WACHTWOORD",
+        GMAIL_APP_WACHTWOORD
+    )
 
-    if not EMAIL_ONTVANGER:
-        raise Exception("EMAIL_ONTVANGER ontbreekt.")
+    require_env(
+        "EMAIL_ONTVANGER",
+        EMAIL_ONTVANGER
+    )
 
     sender = GMAIL_ADRES.strip()
     recipient = EMAIL_ONTVANGER.strip()
 
     if "@" not in sender:
-        raise Exception("GMAIL_ADRES lijkt geen geldig e-mailadres.")
+        raise RuntimeError(
+            "GMAIL_ADRES lijkt geen geldig e-mailadres."
+        )
 
     if "@" not in recipient:
-        raise Exception("EMAIL_ONTVANGER lijkt geen geldig e-mailadres.")
+        raise RuntimeError(
+            "EMAIL_ONTVANGER lijkt geen geldig e-mailadres."
+        )
 
     msg = MIMEMultipart()
+
     msg["From"] = sender
     msg["To"] = recipient
     msg["Subject"] = subject
 
-    msg.attach(MIMEText(body, "plain", "utf-8"))
+    msg.attach(
+        MIMEText(
+            body,
+            "plain",
+            "utf-8"
+        )
+    )
 
-    print("[MAIL] Verbinden met smtp.gmail.com:587")
-    print(f"[MAIL] Onderwerp: {subject}")
-    print(f"[MAIL] Mail body lengte: {len(body)} karakters")
-    print("[MAIL] Ontvanger is ingevuld en lijkt geldig")
-
-    with smtplib.SMTP("smtp.gmail.com", 587, timeout=30) as server:
+    with smtplib.SMTP(
+        "smtp.gmail.com",
+        587,
+        timeout=30
+    ) as server:
         server.ehlo()
         server.starttls()
         server.ehlo()
 
-        print("[MAIL] Inloggen bij Gmail SMTP")
-        server.login(sender, GMAIL_APP_WACHTWOORD)
+        server.login(
+            sender,
+            GMAIL_APP_WACHTWOORD
+        )
 
-        print("[MAIL] Mail verzenden")
-        refused = server.sendmail(sender, [recipient], msg.as_string())
+        refused = server.sendmail(
+            sender,
+            [recipient],
+            msg.as_string()
+        )
 
         if refused:
-            raise Exception(f"Gmail SMTP heeft ontvanger geweigerd: {refused}")
-
-    print("[MAIL] Gmail SMTP heeft de mail aanvaard")
+            raise RuntimeError(
+                "Gmail SMTP heeft de ontvanger "
+                f"geweigerd: {refused}"
+            )
 
 
 def main():
-    require_env("GARMIN_EMAIL", GARMIN_EMAIL)
-    require_env("GARMIN_WACHTWOORD", GARMIN_WACHTWOORD)
-    require_env("GEMINI_API_KEY", GEMINI_API_KEY)
-    require_env("GMAIL_ADRES", GMAIL_ADRES)
-    require_env("GMAIL_APP_WACHTWOORD", GMAIL_APP_WACHTWOORD)
-    require_env("EMAIL_ONTVANGER", EMAIL_ONTVANGER)
+    require_env(
+        "GARMIN_EMAIL",
+        GARMIN_EMAIL
+    )
+
+    require_env(
+        "GARMIN_WACHTWOORD",
+        GARMIN_WACHTWOORD
+    )
+
+    require_env(
+        "GEMINI_API_KEY",
+        GEMINI_API_KEY
+    )
 
     print("[STAP 1] Inloggen bij Garmin")
 
     garmin = login_garmin_with_retry()
 
-    print("[STAP 2] Garmin activiteiten ophalen")
+    print("[STAP 2] Activiteiten ophalen")
 
-    activities_to_fetch = 200 if MODUS == "conditie_evolutie" else 80
-    activities = garmin.get_activities(0, activities_to_fetch)
+    if MODUS in {
+        "conditie_evolutie",
+        "seizoen_plan"
+    }:
+        activities_to_fetch = 200
+    else:
+        activities_to_fetch = 80
+
+    activities = garmin.get_activities(
+        0,
+        activities_to_fetch
+    )
 
     if not activities:
-        raise Exception("Geen Garmin activiteiten gevonden.")
+        raise RuntimeError(
+            "Geen Garmin activiteiten gevonden."
+        )
 
-    print("[STAP 3] Slaapdata ophalen")
+    print("[STAP 3] Slaap ophalen")
 
-    sleep_info = get_sleep_info(garmin)
+    sleep = get_sleep_info(garmin)
 
     print("[STAP 4] Weer ophalen")
 
     weather = get_weather_forecast()
 
-    print("[STAP 5] Atleetmetrics automatisch detecteren")
+    print("[STAP 5] Atleetmetrics ophalen")
 
-    athlete_metrics = detect_athlete_metrics(garmin, activities)
+    metrics = detect_athlete_metrics(
+        garmin,
+        activities
+    )
 
-    print("[STAP 6] Activiteiten samenvatten")
+    print("[STAP 6] Activiteiten analyseren")
 
-    summary = summarize_activities(activities)
+    summary = summarize_activities(
+        activities
+    )
 
     today = now_be().date()
-    races = next_races(today)
-    phase = determine_training_phase(today)
-    recovery = determine_recovery_risk(summary, sleep_info, USER_FEEDBACK)
 
-    context = build_coach_context(
+    races = next_races(today)
+
+    recent_races = previous_races(
+        today
+    )
+
+    phase = determine_training_phase(
+        today,
+        races,
+        recent_races
+    )
+
+    recovery = determine_recovery_risk(
+        summary,
+        sleep,
+        USER_FEEDBACK
+    )
+
+    context = build_context(
         summary=summary,
-        sleep_info=sleep_info,
+        sleep=sleep,
         weather=weather,
         phase=phase,
         races=races,
+        recent=recent_races,
         recovery=recovery,
-        athlete_metrics=athlete_metrics
+        metrics=metrics
     )
 
     print("[STAP 7] Prompt bouwen")
 
     prompt = build_prompt(context)
 
-    print("[STAP 8] AI advies genereren")
+    print("[STAP 8] Coachadvies genereren")
 
     ai_text = call_gemini(prompt)
 
-    recovery_reasons = recovery.get("reasons", [])
-    recovery_reasons_text = ""
-
-    for reason in recovery_reasons:
-        recovery_reasons_text += f"- {reason}\n"
-
-    technical_footer = f"""
+    footer = f"""
 
 --
 KORTE DATA-CHECK
-Slaapstatus: {sleep_info.get("status")}
-Slaapdatum: {sleep_info.get("date")}
-Slaapscore: {sleep_info.get("score")}
+
+Datum: {today.isoformat()}
+Fase: {phase["phase"]}
+Primaire adaptatie: {phase["primary_adaptation"]}
+Blok: {context.get("training_block")}
+
+Slaapstatus: {sleep.get("status")}
+Slaapscore: {sleep.get("score")}
+
 Recovery risk: {recovery.get("level")} ({recovery.get("score")})
 
-Waarom dit recovery risk level:
-{recovery_reasons_text.strip()}
+FTP automatisch: {metrics.get("ftp")} ({metrics.get("ftp_source")})
+Rusthartslag automatisch: {metrics.get("resting_hr")} ({metrics.get("resting_hr_source")})
+Max HR automatisch: {metrics.get("max_hr")} ({metrics.get("max_hr_source")})
 
-Weerbron: {weather.get("source")} - {weather.get("status")}
-Modus: {MODUS}
-Analyseperiode conditie: {safe_int(ANALYSEPERIODE_DAGEN, 90)} dagen
-Powerdata automatisch: {athlete_metrics.get("powerdata")}
-Power-sessies gevonden: {athlete_metrics.get("power_sessions_detected")}
-FTP automatisch: {athlete_metrics.get("ftp")} ({athlete_metrics.get("ftp_source")})
-Rusthartslag automatisch: {athlete_metrics.get("resting_hr")} ({athlete_metrics.get("resting_hr_source")})
-Max HR automatisch: {athlete_metrics.get("max_hr")} ({athlete_metrics.get("max_hr_source")})
-Gewicht ingesteld: {athlete_metrics.get("weight_kg")} kg
-Garmin activiteiten geladen: {summary.get("data_quality", {}).get("activities_loaded")}
-Activiteiten met hartslag: {summary.get("data_quality", {}).get("activities_with_hr")}
-Activiteiten met Training Effect: {summary.get("data_quality", {}).get("activities_with_training_effect")}
-Fietsactiviteiten met power: {summary.get("data_quality", {}).get("bike_activities_with_power")}
+Power-sessies gevonden: {metrics.get("power_sessions_detected")}
+Analyseperiode: {ANALYSEPERIODE_DAGEN} dagen
+Activiteiten geladen: {summary["data_quality"]["activities_loaded"]}
+Wedstrijden ingevoerd: {context["race_calendar"]["planned_races"]}
 """
 
-    final_text = ai_text.strip() + technical_footer
+    final_text = (
+        ai_text.strip()
+        + footer
+    )
 
     print("[STAP 9] Mail verzenden")
 
-    subject = subject_for_mode(context)
+    subject = subject_for_mode(
+        context
+    )
 
-    send_email(subject, final_text)
+    send_email(
+        subject,
+        final_text
+    )
 
-    print("[SUCCES] Coachadvies verzonden.")
+    print(
+        "[SUCCES] Coachadvies verzonden."
+    )
 
 
 if __name__ == "__main__":
     try:
         main()
+
     except Exception:
         print("")
         print("CRITICAL ERROR")
